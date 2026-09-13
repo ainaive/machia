@@ -1,0 +1,12 @@
+{
+  "name": "machia",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun run --filter @machia/server dev & bun run --filter @machia/web dev",
+    "dev:server": "bun run --filter @machia/server dev",
+    "dev:web": "bun run --filter @machia/web dev",
+    "test": "bun test packages/engine",
+    "typecheck": "bun run --filter '*' typecheck"
+  }
+}
