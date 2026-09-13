@@ -1,5 +1,5 @@
 {
-  "name": "Random Walker",
+  "name": "Core Rusher",
   "runtime": "node",
   "entry": "bot.js"
 }
