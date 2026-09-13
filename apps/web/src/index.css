@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #1a1f16;
+  --paper: #e8efe0;
+  --moss: #3d6b4f;
+  --moss-deep: #2a4a36;
+  --clay: #c45c26;
+  --sand: #d4c4a8;
+  --fog: #9aab90;
+  --core: #e8b84a;
+}
+
+@theme {
+  --font-display: "Syne", sans-serif;
+  --font-body: "DM Sans", sans-serif;
+  --color-ink: #1a1f16;
+  --color-paper: #e8efe0;
+  --color-moss: #3d6b4f;
+  --color-moss-deep: #2a4a36;
+  --color-clay: #c45c26;
+  --color-sand: #d4c4a8;
+  --color-fog: #9aab90;
+  --color-core: #e8b84a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, #c5d6b8 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 0%, #d9c4a0 0%, transparent 50%),
+    linear-gradient(165deg, #eef3e8 0%, #dfe8d4 45%, #cfd9c0 100%);
+  background-attachment: fixed;
+}
