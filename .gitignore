@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.DS_Store
+*.log
+.env
+.env.*
+*.tsbuildinfo
+data/replays/*
+!data/replays/.gitkeep
+apps/web/dist/

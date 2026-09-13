@@ -1,0 +1,5 @@
+{
+  "name": "Core Rusher",
+  "runtime": "node",
+  "entry": "bot.js"
+}

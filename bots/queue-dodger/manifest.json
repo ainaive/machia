@@ -1,0 +1,5 @@
+{
+  "name": "Queue Dodger",
+  "runtime": "node",
+  "entry": "bot.js"
+}

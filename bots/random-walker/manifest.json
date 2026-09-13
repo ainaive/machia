@@ -1,0 +1,5 @@
+{
+  "name": "Scout",
+  "runtime": "node",
+  "entry": "bot.js"
+}
