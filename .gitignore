@@ -5,6 +5,7 @@ build/
 *.log
 .env
 .env.*
+*.tsbuildinfo
 data/replays/*
 !data/replays/.gitkeep
 apps/web/dist/
