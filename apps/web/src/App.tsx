@@ -8,6 +8,7 @@ import {
   type MatchReplay,
 } from "./api";
 import { ReplayPlayer } from "./ReplayPlayer";
+import { RulesPanel } from "./RulesPanel";
 
 type View =
   | { kind: "lobby" }
@@ -87,71 +88,76 @@ export function App() {
       )}
 
       {view.kind === "lobby" && (
-        <div className="grid gap-10 lg:grid-cols-[1fr_280px]">
-          <section>
-            <div className="mb-4 flex items-end justify-between gap-4">
-              <h2 className="font-display text-2xl font-bold">选择 Bot</h2>
-              <span className="text-sm text-ink/50">{selected.length} / 8</span>
-            </div>
-            <ul className="divide-y divide-ink/10 border-y border-ink/10">
-              {bots.map((bot) => {
-                const on = selected.includes(bot.id);
-                return (
-                  <li key={bot.id}>
-                    <button
-                      type="button"
-                      onClick={() => toggle(bot.id)}
-                      className={`flex w-full items-center gap-3 py-3 text-left transition-colors ${
-                        on ? "bg-moss/10" : "hover:bg-paper/50"
-                      }`}
-                    >
-                      <span
-                        className={`flex h-5 w-5 items-center justify-center rounded-sm border text-xs ${
-                          on
-                            ? "border-moss bg-moss text-paper"
-                            : "border-ink/25 text-transparent"
+        <>
+          <div className="grid gap-10 lg:grid-cols-[1fr_280px]">
+            <section>
+              <div className="mb-4 flex items-end justify-between gap-4">
+                <h2 className="font-display text-2xl font-bold">选择 Bot</h2>
+                <span className="text-sm text-ink/50">{selected.length} / 8</span>
+              </div>
+              <ul className="divide-y divide-ink/10 border-y border-ink/10">
+                {bots.map((bot) => {
+                  const on = selected.includes(bot.id);
+                  return (
+                    <li key={bot.id}>
+                      <button
+                        type="button"
+                        onClick={() => toggle(bot.id)}
+                        className={`flex w-full items-center gap-3 py-3 text-left transition-colors ${
+                          on ? "bg-moss/10" : "hover:bg-paper/50"
                         }`}
                       >
-                        ✓
-                      </span>
-                      <div>
-                        <div className="font-medium">{bot.name}</div>
-                        <div className="text-xs text-ink/50">
-                          {bot.id} · {bot.runtime}
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-sm border text-xs ${
+                            on
+                              ? "border-moss bg-moss text-paper"
+                              : "border-ink/25 text-transparent"
+                          }`}
+                        >
+                          ✓
+                        </span>
+                        <div>
+                          <div className="font-medium">{bot.name}</div>
+                          <div className="text-xs text-ink/50">
+                            {bot.id} · {bot.runtime}
+                          </div>
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                    </li>
+                  );
+                })}
+                {bots.length === 0 && (
+                  <li className="py-6 text-sm text-ink/50">
+                    未找到 bots/ 目录下的 Bot
                   </li>
-                );
-              })}
-              {bots.length === 0 && (
-                <li className="py-6 text-sm text-ink/50">未找到 bots/ 目录下的 Bot</li>
-              )}
-            </ul>
-          </section>
+                )}
+              </ul>
+            </section>
 
-          <section className="space-y-3 lg:pt-10">
-            <button
-              type="button"
-              onClick={() => run([], 0.5, "demo")}
-              className="w-full rounded-sm bg-clay px-4 py-3 font-display text-lg font-bold text-paper shadow-[0_8px_24px_-8px_rgba(196,92,38,0.55)] transition hover:brightness-110"
-            >
-              一键 Demo
-            </button>
-            <p className="text-xs text-ink/50">
-              4 个样例 Bot · 跑完后以 0.5x 自动回放
-            </p>
-            <button
-              type="button"
-              disabled={selected.length < 2}
-              onClick={() => run(selected, 1, "match")}
-              className="w-full rounded-sm bg-moss px-4 py-3 font-medium text-paper transition enabled:hover:bg-moss-deep disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              开始对战
-            </button>
-            <p className="text-xs text-ink/50">从列表勾选 2–8 个 Bot</p>
-          </section>
-        </div>
+            <section className="space-y-3 lg:pt-10">
+              <button
+                type="button"
+                onClick={() => run([], 0.75, "demo")}
+                className="w-full rounded-sm bg-clay px-4 py-3 font-display text-lg font-bold text-paper shadow-[0_8px_24px_-8px_rgba(196,92,38,0.55)] transition hover:brightness-110"
+              >
+                一键 Demo
+              </button>
+              <p className="text-xs text-ink/50">
+                Scout / Core Rusher / Turtle / Queue Dodger · 0.75x 自动回放
+              </p>
+              <button
+                type="button"
+                disabled={selected.length < 2}
+                onClick={() => run(selected, 1, "match")}
+                className="w-full rounded-sm bg-moss px-4 py-3 font-medium text-paper transition enabled:hover:bg-moss-deep disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                开始对战
+              </button>
+              <p className="text-xs text-ink/50">从列表勾选 2–8 个 Bot</p>
+            </section>
+          </div>
+          <RulesPanel />
+        </>
       )}
     </div>
   );

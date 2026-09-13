@@ -116,6 +116,11 @@ export function ReplayPlayer({
           ← 返回大厅
         </button>
 
+        <p className="rounded-sm border border-ink/10 bg-paper/50 px-3 py-2 text-xs leading-relaxed text-ink/65">
+          提示：动作有 <strong className="text-ink">2 拍延迟</strong>
+          ，侧栏「执行」是本拍真正生效的动作；棋盘上角色可能看起来在「提前排队」。黄色为核心区，深色为缩圈外。
+        </p>
+
         <div>
           <h2 className="font-display text-lg font-bold">本局选手</h2>
           <ul className="mt-2 space-y-2">

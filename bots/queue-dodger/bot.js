@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 "use strict";
 
+/**
+ * Queue Dodger: chase nearest foe, attack when lined up, dodge publicly queued attacks.
+ */
 const readline = require("node:readline");
 const rl = readline.createInterface({ input: process.stdin });
 
@@ -16,29 +19,44 @@ function cellsAttacked(pos, facing) {
   return [1, 2].map((n) => ({ x: pos.x + d.x * n, y: pos.y + d.y * n }));
 }
 
-function willAttackMe(enemy, selfPos) {
-  // Public queue[0] executes this tick — dodge if they attack into our cell
-  if (enemy.queue[0] !== "ATTACK") return false;
-  return cellsAttacked(enemy.pos, enemy.facing).some(
-    (c) => c.x === selfPos.x && c.y === selfPos.y,
-  );
+function manhattan(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
 function toward(from, to) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
+  if (dx === 0 && dy === 0) return null;
   if (Math.abs(dx) >= Math.abs(dy)) {
-    if (dx > 0) return "MOVE_RIGHT";
-    if (dx < 0) return "MOVE_LEFT";
+    return dx > 0 ? "MOVE_RIGHT" : "MOVE_LEFT";
   }
-  if (dy > 0) return "MOVE_DOWN";
-  if (dy < 0) return "MOVE_UP";
-  return "WAIT";
+  return dy > 0 ? "MOVE_DOWN" : "MOVE_UP";
 }
 
-function dodge(self, mapSize) {
+function willAttackMe(enemy, selfPos) {
+  for (const slot of enemy.queue) {
+    if (slot !== "ATTACK") continue;
+    if (
+      cellsAttacked(enemy.pos, enemy.facing).some(
+        (c) => c.x === selfPos.x && c.y === selfPos.y,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function dodge(self, mapSize, dangerFrom) {
   const options = ["MOVE_UP", "MOVE_DOWN", "MOVE_LEFT", "MOVE_RIGHT"];
-  for (const action of options.sort(() => Math.random() - 0.5)) {
+  // Prefer moves that leave the attacked cells
+  const bad = new Set();
+  if (dangerFrom) {
+    for (const c of cellsAttacked(dangerFrom.pos, dangerFrom.facing)) {
+      bad.add(`${c.x},${c.y}`);
+    }
+  }
+  for (const action of options) {
     const d =
       action === "MOVE_UP"
         ? { x: 0, y: -1 }
@@ -49,9 +67,17 @@ function dodge(self, mapSize) {
             : { x: 1, y: 0 };
     const nx = self.pos.x + d.x;
     const ny = self.pos.y + d.y;
-    if (nx >= 0 && ny >= 0 && nx < mapSize && ny < mapSize) return action;
+    if (nx < 0 || ny < 0 || nx >= mapSize || ny >= mapSize) continue;
+    if (bad.has(`${nx},${ny}`)) continue;
+    return action;
   }
   return "BLOCK";
+}
+
+function inFront(self, other) {
+  return cellsAttacked(self.pos, self.facing).some(
+    (c) => c.x === other.pos.x && c.y === other.pos.y,
+  );
 }
 
 rl.on("line", (line) => {
@@ -69,23 +95,29 @@ rl.on("line", (line) => {
     return;
   }
 
-  const danger = msg.players.some(
+  const threats = msg.players.filter(
     (p) => p.id !== self.id && p.alive && willAttackMe(p, self.pos),
   );
+  if (threats.length > 0) {
+    process.stdout.write(
+      JSON.stringify({ action: dodge(self, msg.mapSize, threats[0]) }) + "\n",
+    );
+    return;
+  }
+
+  const enemies = msg.players
+    .filter((p) => p.id !== self.id && p.alive)
+    .sort((a, b) => manhattan(self.pos, a.pos) - manhattan(self.pos, b.pos));
+  const nearest = enemies[0];
+  const mid = (msg.mapSize - 1) / 2;
 
   let action;
-  if (danger) {
-    action = dodge(self, msg.mapSize);
+  if (nearest && inFront(self, nearest)) {
+    action = "ATTACK";
+  } else if (nearest) {
+    action = toward(self.pos, nearest.pos) || "WAIT";
   } else {
-    const mid = (msg.mapSize - 1) / 2;
-    const enemy = msg.players.find((p) => {
-      if (p.id === self.id || !p.alive) return false;
-      return cellsAttacked(self.pos, self.facing).some(
-        (c) => c.x === p.pos.x && c.y === p.pos.y,
-      );
-    });
-    if (enemy) action = "ATTACK";
-    else action = toward(self.pos, { x: mid, y: mid });
+    action = toward(self.pos, { x: mid, y: mid }) || "WAIT";
   }
 
   process.stdout.write(JSON.stringify({ action }) + "\n");
