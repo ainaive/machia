@@ -13,9 +13,35 @@
         "typescript": "^5.9.2",
       },
     },
+    "packages/protocol": {
+      "name": "@machia/protocol",
+      "version": "0.1.0",
+      "dependencies": {
+        "@machia/engine": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.2",
+      },
+    },
+    "packages/runner": {
+      "name": "@machia/runner",
+      "version": "0.1.0",
+      "dependencies": {
+        "@machia/engine": "workspace:*",
+        "@machia/protocol": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.9.2",
+      },
+    },
   },
   "packages": {
     "@machia/engine": ["@machia/engine@workspace:packages/engine"],
+
+    "@machia/protocol": ["@machia/protocol@workspace:packages/protocol"],
+
+    "@machia/runner": ["@machia/runner@workspace:packages/runner"],
 
     "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
 
