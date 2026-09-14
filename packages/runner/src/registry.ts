@@ -1,8 +1,9 @@
 import { arenaPlugin } from "@machia/engine";
 import { bomberPlugin } from "@machia/games-bomber";
+import { tanksPlugin } from "@machia/games-tanks";
 import type { GameInfo, GamePlugin } from "@machia/game-api";
 
-const plugins: GamePlugin[] = [arenaPlugin, bomberPlugin];
+const plugins: GamePlugin[] = [arenaPlugin, bomberPlugin, tanksPlugin];
 
 const byId = new Map(plugins.map((p) => [p.id, p]));
 

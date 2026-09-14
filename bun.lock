@@ -68,6 +68,17 @@
         "typescript": "^5.9.2",
       },
     },
+    "packages/games-tanks": {
+      "name": "@machia/games-tanks",
+      "version": "0.1.0",
+      "dependencies": {
+        "@machia/game-api": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.9.2",
+      },
+    },
     "packages/protocol": {
       "name": "@machia/protocol",
       "version": "0.1.0",
@@ -85,6 +96,7 @@
         "@machia/engine": "workspace:*",
         "@machia/game-api": "workspace:*",
         "@machia/games-bomber": "workspace:*",
+        "@machia/games-tanks": "workspace:*",
         "@machia/protocol": "workspace:*",
       },
       "devDependencies": {
@@ -199,6 +211,8 @@
     "@machia/game-api": ["@machia/game-api@workspace:packages/game-api"],
 
     "@machia/games-bomber": ["@machia/games-bomber@workspace:packages/games-bomber"],
+
+    "@machia/games-tanks": ["@machia/games-tanks@workspace:packages/games-tanks"],
 
     "@machia/protocol": ["@machia/protocol@workspace:packages/protocol"],
 
