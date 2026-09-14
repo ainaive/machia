@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import {
   isMatchRunning,
   listBots,
+  listGames,
   listReplays,
   readReplay,
   startDemoMatch,
@@ -20,10 +21,18 @@ app.use(
 
 app.get("/api/health", (c) => c.json({ ok: true, running: isMatchRunning() }));
 
+app.get("/api/games", (c) => c.json({ games: listGames() }));
+
 app.get("/api/bots", async (c) => {
-  const bots = await listBots();
+  const gameId = c.req.query("game") ?? undefined;
+  const bots = await listBots(gameId);
   return c.json({
-    bots: bots.map(({ id, name, runtime }) => ({ id, name, runtime })),
+    bots: bots.map(({ id, name, runtime, games }) => ({
+      id,
+      name,
+      runtime,
+      games,
+    })),
   });
 });
 
@@ -34,11 +43,13 @@ app.get("/api/matches", async (c) => {
 
 app.post("/api/matches", async (c) => {
   try {
-    const body = await c.req.json<{ botIds?: string[] }>();
+    const body = await c.req.json<{ botIds?: string[]; gameId?: string }>();
+    const gameId = body.gameId ?? "arena";
     const botIds = body.botIds ?? [];
-    const replay = await startMatch(botIds);
+    const replay = await startMatch(gameId, botIds);
     return c.json({
       matchId: replay.id,
+      gameId: replay.gameId,
       results: replay.results,
       totalTicks: replay.totalTicks,
     });
@@ -51,9 +62,17 @@ app.post("/api/matches", async (c) => {
 
 app.post("/api/matches/demo", async (c) => {
   try {
-    const replay = await startDemoMatch();
+    let gameId = "arena";
+    try {
+      const body = await c.req.json<{ gameId?: string }>();
+      if (body.gameId) gameId = body.gameId;
+    } catch {
+      // empty body ok
+    }
+    const replay = await startDemoMatch(gameId);
     return c.json({
       matchId: replay.id,
+      gameId: replay.gameId,
       results: replay.results,
       totalTicks: replay.totalTicks,
     });
@@ -69,6 +88,7 @@ app.get("/api/matches/:id", async (c) => {
   if (!replay) return c.json({ error: "Not found" }, 404);
   return c.json({
     id: replay.id,
+    gameId: replay.gameId ?? "arena",
     createdAt: replay.createdAt,
     mapSize: replay.mapSize,
     players: replay.players,

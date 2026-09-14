@@ -1,7 +1,12 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { BotManifest } from "@machia/protocol";
-import { runMatch, type MatchReplay } from "@machia/runner";
+import {
+  getGame,
+  listGames,
+  runMatch,
+  type MatchReplay,
+} from "@machia/runner";
 
 const ROOT = path.resolve(import.meta.dir, "../../..");
 export const BOTS_DIR = path.join(ROOT, "bots");
@@ -13,6 +18,7 @@ export interface BotInfo {
   runtime: string;
   entry: string;
   dir: string;
+  games: string[];
 }
 
 let running = false;
@@ -21,7 +27,14 @@ export function isMatchRunning(): boolean {
   return running;
 }
 
-export async function listBots(): Promise<BotInfo[]> {
+export { listGames };
+
+function botGames(manifest: BotManifest): string[] {
+  if (manifest.games && manifest.games.length > 0) return manifest.games;
+  return ["arena"];
+}
+
+export async function listBots(gameId?: string): Promise<BotInfo[]> {
   const entries = await readdir(BOTS_DIR, { withFileTypes: true });
   const bots: BotInfo[] = [];
   for (const ent of entries) {
@@ -32,32 +45,33 @@ export async function listBots(): Promise<BotInfo[]> {
       const raw = await readFile(manifestPath, "utf8");
       const manifest = JSON.parse(raw) as BotManifest;
       if (manifest.runtime !== "node" || !manifest.entry) continue;
+      const games = botGames(manifest);
+      if (gameId && !games.includes(gameId)) continue;
       bots.push({
         id: ent.name,
         name: manifest.name || ent.name,
         runtime: manifest.runtime,
         entry: manifest.entry,
         dir,
+        games,
       });
     } catch {
-      // skip invalid bot folders
+      // skip
     }
   }
   bots.sort((a, b) => a.id.localeCompare(b.id));
   return bots;
 }
 
-export async function loadBot(id: string): Promise<BotInfo> {
-  const bots = await listBots();
+export async function loadBot(id: string, gameId: string): Promise<BotInfo> {
+  const bots = await listBots(gameId);
   const bot = bots.find((b) => b.id === id);
-  if (!bot) throw new Error(`Unknown bot: ${id}`);
+  if (!bot) throw new Error(`Unknown bot for ${gameId}: ${id}`);
   return bot;
 }
 
 async function withMatchLock<T>(fn: () => Promise<T>): Promise<T> {
-  if (running) {
-    throw new Error("A match is already running");
-  }
+  if (running) throw new Error("A match is already running");
   running = true;
   try {
     return await fn();
@@ -70,14 +84,20 @@ function newMatchId(): string {
   return `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export async function startMatch(botIds: string[]): Promise<MatchReplay> {
-  if (botIds.length < 2 || botIds.length > 8) {
-    throw new Error("Select 2 to 8 bots");
+export async function startMatch(
+  gameId: string,
+  botIds: string[],
+): Promise<MatchReplay> {
+  const plugin = getGame(gameId);
+  if (botIds.length < plugin.minPlayers || botIds.length > plugin.maxPlayers) {
+    throw new Error(
+      `Select ${plugin.minPlayers} to ${plugin.maxPlayers} bots for ${plugin.name}`,
+    );
   }
   return withMatchLock(async () => {
     const players = [];
     for (const id of botIds) {
-      const bot = await loadBot(id);
+      const bot = await loadBot(id, gameId);
       players.push({
         botId: bot.id,
         botDir: bot.dir,
@@ -85,11 +105,12 @@ export async function startMatch(botIds: string[]): Promise<MatchReplay> {
           name: bot.name,
           runtime: "node" as const,
           entry: bot.entry,
+          games: bot.games,
         },
       });
     }
     const id = newMatchId();
-    const replay = await runMatch({ id, players });
+    const replay = await runMatch({ id, gameId, players });
     await mkdir(REPLAYS_DIR, { recursive: true });
     await writeFile(
       path.join(REPLAYS_DIR, `${id}.json`),
@@ -100,15 +121,15 @@ export async function startMatch(botIds: string[]): Promise<MatchReplay> {
   });
 }
 
-export const DEMO_BOT_IDS = [
-  "random-walker",
-  "core-rusher",
-  "turtle",
-  "queue-dodger",
-] as const;
+export const DEMO_BOTS: Record<string, string[]> = {
+  arena: ["random-walker", "core-rusher", "turtle", "queue-dodger"],
+  bomber: ["bomber-rusher", "bomber-turtle"],
+};
 
-export async function startDemoMatch(): Promise<MatchReplay> {
-  return startMatch([...DEMO_BOT_IDS]);
+export async function startDemoMatch(gameId = "arena"): Promise<MatchReplay> {
+  const ids = DEMO_BOTS[gameId];
+  if (!ids) throw new Error(`No demo configured for ${gameId}`);
+  return startMatch(gameId, ids);
 }
 
 export async function readReplay(id: string): Promise<MatchReplay | null> {
@@ -121,7 +142,12 @@ export async function readReplay(id: string): Promise<MatchReplay | null> {
 }
 
 export async function listReplays(): Promise<
-  Array<{ id: string; createdAt: string; players: MatchReplay["players"] }>
+  Array<{
+    id: string;
+    gameId: string;
+    createdAt: string;
+    players: MatchReplay["players"];
+  }>
 > {
   await mkdir(REPLAYS_DIR, { recursive: true });
   const files = await readdir(REPLAYS_DIR);
@@ -132,6 +158,7 @@ export async function listReplays(): Promise<
     if (!replay) continue;
     out.push({
       id: replay.id,
+      gameId: replay.gameId ?? "arena",
       createdAt: replay.createdAt,
       players: replay.players,
     });
