@@ -48,6 +48,26 @@ export interface BomberPlayer {
 const FUSE_TICKS = 4;
 const MAX_POWER = 5;
 const MAX_BOMBS = 3;
+/** After this many 1v1 (≤2 alive) ticks, hazard ring grows by 1. */
+const DUEL_SHRINK_EVERY = 18;
+/** Hard stop so open-map duels cannot fill maxTicks with tug-of-war. */
+const DUEL_MAX_TICKS = 90;
+
+export function inHazardRing(
+  pos: Position,
+  mapSize: number,
+  hazardRing: number,
+): boolean {
+  if (hazardRing <= 0) return false;
+  // Ring 1 = first playable row/col next to hard border (x=1 / x=size-2).
+  const edge = hazardRing;
+  return (
+    pos.x <= edge ||
+    pos.y <= edge ||
+    pos.x >= mapSize - 1 - edge ||
+    pos.y >= mapSize - 1 - edge
+  );
+}
 
 export function mapSizeForPlayers(n: number): number {
   if (n <= 2) return 11;
@@ -148,6 +168,9 @@ export class BomberEngine implements GameInstance {
   tiles: Tile[][];
   bombs: Bomb[] = [];
   powerups: PowerUp[] = [];
+  /** Extra lethal border during ≤2-player overtime (0 = off). */
+  hazardRing = 0;
+  private duelTicks = 0;
   private nextBombId = 1;
   private readonly random: () => number;
 
@@ -183,6 +206,8 @@ export class BomberEngine implements GameInstance {
       tick: this.tick,
       selfId: playerId,
       mapSize: this.mapSize,
+      hazardRing: this.hazardRing,
+      duelTicks: this.duelTicks,
       tiles: this.tiles,
       bombs: this.bombs.map((b) => ({ ...b, pos: { ...b.pos } })),
       powerups: this.powerups.map((p) => ({ ...p, pos: { ...p.pos } })),
@@ -378,7 +403,7 @@ export class BomberEngine implements GameInstance {
     }
     this.bombs = this.bombs.filter((b) => !explodedIds.has(b.id));
 
-    // Deaths
+    // Deaths from blast
     for (const p of this.players) {
       if (!p.alive) continue;
       const owners = cellOwners.get(posKey(p.pos));
@@ -390,6 +415,39 @@ export class BomberEngine implements GameInstance {
         if (ownerId === p.id) continue;
         const attacker = this.players[ownerId];
         if (attacker) attacker.kills += 1;
+      }
+    }
+
+    // 1v1 overtime: shrink + hard cap (stops open-map tug forever)
+    if (this.aliveCount() === 2) {
+      this.duelTicks += 1;
+      if (this.duelTicks > 0 && this.duelTicks % DUEL_SHRINK_EVERY === 0) {
+        const maxRing = Math.floor((this.mapSize - 1) / 2) - 1;
+        if (this.hazardRing < maxRing) {
+          this.hazardRing += 1;
+          events.push({
+            type: "hazard_shrink",
+            hazardRing: this.hazardRing,
+          });
+        }
+      }
+    } else if (this.aliveCount() > 2) {
+      this.duelTicks = 0;
+      this.hazardRing = 0;
+    }
+
+    if (this.hazardRing > 0) {
+      for (const p of this.players) {
+        if (!p.alive) continue;
+        if (!inHazardRing(p.pos, this.mapSize, this.hazardRing)) continue;
+        p.alive = false;
+        p.deathTick = this.tick;
+        events.push({
+          type: "death",
+          playerId: p.id,
+          pos: { ...p.pos },
+          cause: "hazard",
+        });
       }
     }
 
@@ -414,10 +472,16 @@ export class BomberEngine implements GameInstance {
       bombs: this.bombs.map((b) => ({ ...b, pos: { ...b.pos } })),
       powerups: this.powerups.map((u) => ({ ...u, pos: { ...u.pos } })),
       blast,
+      hazardRing: this.hazardRing,
+      duelTicks: this.duelTicks,
     };
 
     this.tick += 1;
-    if (this.aliveCount() <= 1 || this.tick >= this.maxTicks) {
+    if (
+      this.aliveCount() <= 1 ||
+      this.tick >= this.maxTicks ||
+      this.duelTicks >= DUEL_MAX_TICKS
+    ) {
       this.finished = true;
     }
 

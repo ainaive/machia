@@ -266,6 +266,17 @@ function occupied(players, selfId, p) {
   );
 }
 
+function inHazard(p, mapSize, hazardRing) {
+  if (!hazardRing || hazardRing <= 0) return false;
+  const edge = hazardRing;
+  return (
+    p.x <= edge ||
+    p.y <= edge ||
+    p.x >= mapSize - 1 - edge ||
+    p.y >= mapSize - 1 - edge
+  );
+}
+
 const memory = {
   recent: [],
   lastAction: null,
@@ -274,20 +285,36 @@ const memory = {
   salt: Math.floor(Math.random() * 17),
   wp: null,
   wpUntil: -1,
+  duelStart: null,
+  lastBombTick: -999,
 };
+
+/** Cells from which we can currently blast `enemy`. */
+function isFiringCell(tiles, p, power, enemy) {
+  return bombHits(tiles, p, power, enemy.pos) && manhattan(p, enemy.pos) >= 1;
+}
 
 function decide(msg, self, style = "hunter") {
   const { tiles, bombs, powerups, players } = msg;
+  const mapSize = msg.mapSize || tiles.length;
+  const hazardRing = msg.hazardRing || 0;
   const danger = blastSet(tiles, bombs);
   const power = self.power || 1;
   const softLeft = countSoft(tiles);
-  const endgame = softLeft <= 10 || msg.tick >= 50;
+  const alive = players.filter((p) => p.alive).length;
+  const duel = alive <= 2;
+  const endgame = softLeft <= 10 || msg.tick >= 50 || duel;
   const huntStyle = endgame ? "hunter" : style;
 
   const enemy = nearestEnemy(self, players);
   const allowBomb = self.bombsLeft > 0 && !hasLiveOwnBomb(bombs, self.id);
 
-  // Position unchanged after a MOVE ⇒ collision cancel / stuck
+  if (duel && memory.duelStart == null) memory.duelStart = msg.tick;
+  if (!duel) memory.duelStart = null;
+  const duelAge =
+    duel && memory.duelStart != null ? msg.tick - memory.duelStart : 0;
+  const engineDuel = msg.duelTicks || 0;
+
   if (
     memory.lastPos &&
     key(memory.lastPos) === key(self.pos) &&
@@ -302,8 +329,55 @@ function decide(msg, self, style = "hunter") {
 
   const finish = (action) => {
     memory.lastAction = action;
+    if (action === "PLACE_BOMB") memory.lastBombTick = msg.tick;
     return action;
   };
+
+  const safeCell = (p) =>
+    !danger.has(key(p)) && !inHazard(p, mapSize, hazardRing);
+
+  // Escape check slightly looser in prolonged duel so someone commits
+  const escapeSteps =
+    duel && (duelAge >= 15 || engineDuel >= 15 || hazardRing > 0) ? 3 : 2;
+
+  // 0) Flee shrinking hazard before anything else
+  if (hazardRing > 0) {
+    if (inHazard(self.pos, mapSize, hazardRing)) {
+      const inward = listSafeMoves(tiles, bombs, self.pos, danger).filter(
+        (a) => {
+          const dest = stepPos(self.pos, a);
+          return (
+            !occupied(players, self.id, dest) &&
+            !inHazard(dest, mapSize, hazardRing)
+          );
+        },
+      );
+      if (inward.length) return finish(pickMove(inward, self.pos, memory));
+    }
+    // Stay ahead of next shrink: prefer deeper center
+    if (!danger.has(key(self.pos))) {
+      const margin = hazardRing + 1;
+      const plan = planToward(
+        tiles,
+        bombs,
+        self.pos,
+        (p) =>
+          !occupied(players, self.id, p) &&
+          !inHazard(p, mapSize, margin) &&
+          safeCell(p),
+        true,
+      );
+      if (plan && plan.kind === "move") {
+        const dest = stepPos(self.pos, plan.action);
+        if (safeCell(dest) && !occupied(players, self.id, dest)) {
+          // Only pull inward when near the edge
+          if (inHazard(self.pos, mapSize, margin)) {
+            return finish(plan.action);
+          }
+        }
+      }
+    }
+  }
 
   // 1) Survive
   if (danger.has(key(self.pos))) {
@@ -318,13 +392,13 @@ function decide(msg, self, style = "hunter") {
     return finish(move || "WAIT");
   }
 
-  // 2) Stuck: bomb or sidestep — do not keep retrying the same contested step
+  // 2) Stuck breaker
   if (memory.stuck >= 2) {
     if (
       enemy &&
       allowBomb &&
-      manhattan(self.pos, enemy.pos) <= Math.max(2, power) &&
-      canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)
+      manhattan(self.pos, enemy.pos) <= Math.max(3, power + 1) &&
+      canEscapeAfterBomb(tiles, bombs, self.pos, power, escapeSteps)
     ) {
       memory.stuck = 0;
       return finish("PLACE_BOMB");
@@ -344,8 +418,8 @@ function decide(msg, self, style = "hunter") {
     }
   }
 
-  // 3) Powerups
-  if (powerups.length) {
+  // 3) Powerups (skip in late duel — finish the fight)
+  if (powerups.length && !(duel && duelAge > 10)) {
     const plan = planToward(
       tiles,
       bombs,
@@ -358,17 +432,121 @@ function decide(msg, self, style = "hunter") {
     if (plan && plan.kind === "move") return finish(plan.action);
   }
 
-  // 4) Fight
-  if (enemy) {
+  // 4) ——— 1v1 duel: asymmetric commit, no orbiting ———
+  if (duel && enemy) {
     const dist = manhattan(self.pos, enemy.pos);
+    const chaser = self.id < enemy.id; // break mirror symmetry
+    const ticksSinceBomb = msg.tick - memory.lastBombTick;
 
-    // Next to enemy → bomb (never walk onto them)
+    // Always bomb if we already have a shot
+    if (
+      allowBomb &&
+      bombHits(tiles, self.pos, power, enemy.pos) &&
+      canEscapeAfterBomb(tiles, bombs, self.pos, power, escapeSteps)
+    ) {
+      return finish("PLACE_BOMB");
+    }
+    if (
+      allowBomb &&
+      dist === 1 &&
+      canEscapeAfterBomb(tiles, bombs, self.pos, power, escapeSteps)
+    ) {
+      return finish("PLACE_BOMB");
+    }
+
+    // Forced commitment if duel drags on (engine also shrinks after ~18)
+    if (
+      allowBomb &&
+      (ticksSinceBomb >= 10 || engineDuel >= 12 || hazardRing > 0) &&
+      dist <= 4 &&
+      canEscapeAfterBomb(tiles, bombs, self.pos, power, escapeSteps)
+    ) {
+      return finish("PLACE_BOMB");
+    }
+
+    // Chaser: close to dist 1–2; Trailer: get onto a firing line at dist 2–power
+    let plan;
+    if (chaser || duelAge >= 20 || engineDuel >= 20 || hazardRing > 0) {
+      plan = planToward(
+        tiles,
+        bombs,
+        self.pos,
+        (p) =>
+          !occupied(players, self.id, p) &&
+          !inHazard(p, mapSize, hazardRing) &&
+          manhattan(p, enemy.pos) >= 1 &&
+          manhattan(p, enemy.pos) <= 2 &&
+          (manhattan(p, enemy.pos) === 1 ||
+            isFiringCell(tiles, p, power, enemy)),
+        true,
+      );
+    } else {
+      plan = planToward(
+        tiles,
+        bombs,
+        self.pos,
+        (p) =>
+          !occupied(players, self.id, p) &&
+          !inHazard(p, mapSize, hazardRing) &&
+          isFiringCell(tiles, p, power, enemy),
+        true,
+      );
+    }
+
+    if (plan && plan.kind === "move") {
+      const dest = stepPos(self.pos, plan.action);
+      if (
+        !occupied(players, self.id, dest) &&
+        !danger.has(key(dest)) &&
+        !inHazard(dest, mapSize, hazardRing)
+      ) {
+        // Avoid pure ping-pong: if reversing, and we can bomb, bomb instead
+        if (
+          plan.action === opposite(memory.lastAction) &&
+          allowBomb &&
+          dist <= 3 &&
+          canEscapeAfterBomb(tiles, bombs, self.pos, power, escapeSteps)
+        ) {
+          return finish("PLACE_BOMB");
+        }
+        return finish(plan.action);
+      }
+    }
+    if (plan && plan.kind === "need_bomb" && allowBomb) {
+      if (
+        softHitsFrom(tiles, self.pos, power) > 0 &&
+        canEscapeAfterBomb(tiles, bombs, self.pos, power, escapeSteps)
+      ) {
+        return finish("PLACE_BOMB");
+      }
+    }
+    if (plan && plan.kind === "at_goal" && allowBomb) {
+      if (canEscapeAfterBomb(tiles, bombs, self.pos, power, escapeSteps)) {
+        return finish("PLACE_BOMB");
+      }
+    }
+
+    // Last resort in duel: step closer on axis toward enemy
+    const towardEnemy = [];
+    if (enemy.pos.x > self.pos.x) towardEnemy.push("MOVE_RIGHT");
+    if (enemy.pos.x < self.pos.x) towardEnemy.push("MOVE_LEFT");
+    if (enemy.pos.y > self.pos.y) towardEnemy.push("MOVE_DOWN");
+    if (enemy.pos.y < self.pos.y) towardEnemy.push("MOVE_UP");
+    const safe = listSafeMoves(tiles, bombs, self.pos, danger).filter((a) => {
+      const dest = stepPos(self.pos, a);
+      return !occupied(players, self.id, dest) && towardEnemy.includes(a);
+    });
+    if (safe.length) return finish(pickMove(safe, self.pos, memory));
+  }
+
+  // 5) Multi-player fight (not pure duel)
+  if (enemy && !duel) {
+    const dist = manhattan(self.pos, enemy.pos);
     if (dist === 1 && allowBomb) {
       if (canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)) {
         return finish("PLACE_BOMB");
       }
     }
-
     if (
       allowBomb &&
       bombHits(tiles, self.pos, power, enemy.pos) &&
@@ -380,7 +558,7 @@ function decide(msg, self, style = "hunter") {
     }
   }
 
-  // 5) Early soft farm
+  // 6) Early soft farm
   if (
     !endgame &&
     allowBomb &&
@@ -391,8 +569,8 @@ function decide(msg, self, style = "hunter") {
     return finish("PLACE_BOMB");
   }
 
-  // 6) Per-bot engage waypoint (free cell near enemy, not shared)
-  if (enemy) {
+  // 7) Waypoints only when 3+ alive (avoid 1v1 orbit)
+  if (enemy && !duel) {
     const needNewWp =
       !memory.wp ||
       msg.tick >= memory.wpUntil ||
@@ -414,7 +592,6 @@ function decide(msg, self, style = "hunter") {
           candidates.push(p);
         }
       }
-      // also distance-2 anchors for sniper-ish spacing
       for (const dir of [
         { x: 2, y: 0 },
         { x: -2, y: 0 },
@@ -477,7 +654,7 @@ function decide(msg, self, style = "hunter") {
     }
   }
 
-  // 7) Early soft path
+  // 8) Early soft path
   if (!endgame) {
     const plan = planToward(
       tiles,
@@ -497,7 +674,7 @@ function decide(msg, self, style = "hunter") {
     }
   }
 
-  // 8) Explore
+  // 9) Explore
   const opts = listSafeMoves(tiles, bombs, self.pos, danger).filter((a) => {
     const dest = stepPos(self.pos, a);
     return !occupied(players, self.id, dest);

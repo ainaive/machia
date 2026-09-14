@@ -128,6 +128,7 @@ function BoardBomber({
   const blast = new Set(
     (snap?.blast ?? []).map((p) => `${p.x},${p.y}`),
   );
+  const hazardRing = Number(snap?.hazardRing ?? 0);
   const cellPx = Math.max(14, Math.min(32, Math.floor(560 / size)));
 
   return (
@@ -143,9 +144,16 @@ function BoardBomber({
         const y = Math.floor(i / size);
         const tile = tiles[y]?.[x] ?? "empty";
         const key = `${x},${y}`;
+        const hazardous =
+          hazardRing > 0 &&
+          (x <= hazardRing ||
+            y <= hazardRing ||
+            x >= size - 1 - hazardRing ||
+            y >= size - 1 - hazardRing);
         let bg = "bg-[#c8d6b8]";
         if (tile === "hard") bg = "bg-[#4a5560]";
         if (tile === "soft") bg = "bg-[#8b6914]";
+        if (hazardous && tile === "empty") bg = "bg-[#9aa88a]";
         if (blast.has(key)) bg = "bg-[#e85d3a]";
 
         const bomb = bombs.find((b) => b.pos.x === x && b.pos.y === y);

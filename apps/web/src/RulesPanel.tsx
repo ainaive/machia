@@ -34,6 +34,10 @@ const BOMBER_RULES = [
     title: "道具与计分",
     body: "拆墙可能掉火力/弹数。得分 = 50×击杀 + 5×拆墙 + 0.1×存活拍。",
   },
+  {
+    title: "残局缩圈",
+    body: "只剩两人时进入加时：约每 18 拍外圈变致死区，最多约 90 拍决出胜负，避免无限拉扯。",
+  },
 ] as const;
 
 export function RulesPanel({ gameId }: { gameId: string }) {

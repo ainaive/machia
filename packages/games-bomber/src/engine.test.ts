@@ -106,4 +106,32 @@ describe("bomber basics", () => {
     expect(engine.players[0]!.kills).toBe(1);
     expect(engine.finished).toBe(true);
   });
+
+  test("1v1 overtime shrinks hazard and can finish duel", () => {
+    const size = 11;
+    const tiles: Tile[][] = Array.from({ length: size }, () =>
+      Array.from({ length: size }, () => "empty" as Tile),
+    );
+    for (let i = 0; i < size; i++) {
+      tiles[0]![i] = "hard";
+      tiles[size - 1]![i] = "hard";
+      tiles[i]![0] = "hard";
+      tiles[i]![size - 1] = "hard";
+    }
+
+    const engine = new BomberEngine(
+      { playerCount: 2, maxTicks: 200 },
+      { tiles, random: () => 0 },
+    );
+    engine.players[0]!.pos = { x: 1, y: 1 };
+    engine.players[1]!.pos = { x: 9, y: 9 };
+
+    for (let i = 0; i < 18; i++) {
+      engine.step({ 0: "WAIT", 1: "WAIT" });
+    }
+    expect(engine.hazardRing).toBe(1);
+    expect(engine.players[0]!.alive).toBe(false);
+    expect(engine.players[1]!.alive).toBe(false);
+    expect(engine.finished).toBe(true);
+  });
 });
