@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { fetchReplay, type MatchReplay } from "../api";
 import { ReplayPlayer } from "../ReplayPlayer";
 import { SiteShell } from "../SiteShell";
+import { gameAccent } from "../gameAccent";
 
 type LocationState = { speed?: number } | null;
 
@@ -62,8 +63,7 @@ export function MatchPage() {
   }
 
   const gameId = replay.gameId ?? "arena";
-  const accent =
-    gameId === "bomber" ? "bomber" : gameId === "tanks" ? "tanks" : "arena";
+  const accent = gameAccent(gameId);
 
   return (
     <SiteShell accent={accent}>

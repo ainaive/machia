@@ -11,6 +11,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { MatchReplay } from "./api";
 import { Board } from "./Board";
+import { gameAccent } from "./gameAccent";
 import { RobotToken, playerColor } from "./sprites";
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
@@ -34,8 +35,10 @@ export function ReplayPlayer({
 
   const max = Math.max(0, replay.ticks.length - 1);
   const snap = replay.ticks[index];
-  const isBomber = (replay.gameId ?? "arena") === "bomber";
-  const isTanks = (replay.gameId ?? "arena") === "tanks";
+  const gameId = replay.gameId ?? "arena";
+  const isBomber = gameId === "bomber";
+  const isTanks = gameId === "tanks";
+  const isSokoban = gameId === "sokoban";
   const progress = max > 0 ? index / max : 0;
 
   useEffect(() => {
@@ -159,11 +162,21 @@ export function ReplayPlayer({
           <div className="flex items-center gap-2 border-b border-ink/10 bg-moss/10 px-3 py-2">
             <Swords size={16} className="text-moss" />
             <span className="font-display text-sm font-bold">
-              {isTanks ? "Tanks" : isBomber ? "Bomber" : "Arena"}
+              {isSokoban
+                ? "Sokoban"
+                : isTanks
+                  ? "Tanks"
+                  : isBomber
+                    ? "Bomber"
+                    : "Arena"}
             </span>
           </div>
           <p className="px-3 py-2.5 text-xs leading-relaxed text-ink/65">
-            {isTanks ? (
+            {isSokoban ? (
+              <>
+                每人一张独立盘面。金格为目标点，木箱推进去会变深色。比谁更快推完。
+              </>
+            ) : isTanks ? (
               <>
                 炮管指向朝向。金黄圆点为子弹。MOVE 会转向并前进；FIRE
                 射击；硬墙挡弹也挡车。
@@ -215,17 +228,20 @@ export function ReplayPlayer({
                     color={playerColor(p.playerId)}
                     size={36}
                     facing={view?.facing ?? "DOWN"}
-                    accent={
-                      isTanks ? "tanks" : isBomber ? "bomber" : "arena"
-                    }
+                    accent={gameAccent(gameId)}
                     dim={!alive}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{p.name}</div>
                     <div className="truncate text-xs text-ink/55">
-                      {!alive
+                      {!alive && !isSokoban
                         ? `阵亡 @${result?.deathTick ?? "?"}`
-                        : isTanks
+                        : isSokoban
+                          ? view &&
+                            (view as { done?: boolean }).done
+                            ? `完成 · ${(view as { steps?: number }).steps ?? "-"} 步`
+                            : `箱 ${(view as { boxesOnGoal?: number }).boxesOnGoal ?? "-"}/${(view as { goalCount?: number }).goalCount ?? "-"} · ${(view as { steps?: number }).steps ?? "-"} 步`
+                          : isTanks
                           ? `朝向 ${view?.facing ?? "-"}`
                           : isBomber
                           ? `火力 ${view?.power ?? "-"} · 弹上限 ${view?.bombsMax ?? "-"}`

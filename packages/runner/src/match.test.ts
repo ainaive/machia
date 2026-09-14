@@ -109,3 +109,37 @@ describe("runMatch tanks", () => {
     expect(replay.ticks[0]?.bullets).toBeDefined();
   }, 20_000);
 });
+
+function sokobanPlayer(id: string) {
+  const botDir = path.join(botsRoot, id);
+  return {
+    botId: id,
+    botDir,
+    manifest: {
+      name: id,
+      runtime: "node" as const,
+      entry: "bot.js",
+      games: ["sokoban"],
+    },
+  };
+}
+
+describe("runMatch sokoban", () => {
+  test("completes a short 2-player match", async () => {
+    const replay = await runMatch({
+      id: "test-match-sokoban",
+      gameId: "sokoban",
+      maxTicks: 80,
+      players: [
+        sokobanPlayer("sokoban-pusher"),
+        sokobanPlayer("sokoban-hauler"),
+      ],
+    });
+
+    expect(replay.gameId).toBe("sokoban");
+    expect(replay.ticks.length).toBeGreaterThan(0);
+    expect(replay.ticks.length).toBeLessThanOrEqual(80);
+    expect(replay.results).toHaveLength(2);
+    expect(replay.ticks[0]?.cells).toBeDefined();
+  }, 25_000);
+});

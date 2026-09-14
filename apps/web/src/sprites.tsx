@@ -29,7 +29,7 @@ interface TokenProps {
   size: number;
   facing?: string;
   label?: string | number;
-  accent?: "arena" | "bomber" | "tanks";
+  accent?: "arena" | "bomber" | "tanks" | "sokoban";
   dim?: boolean;
 }
 
@@ -44,7 +44,13 @@ export function RobotToken({
 }: TokenProps) {
   const rot = FACING_ROT[facing] ?? 180;
   const eye =
-    accent === "bomber" ? "#ffb347" : accent === "tanks" ? "#9ad0ff" : "#7dffb3";
+    accent === "bomber"
+      ? "#ffb347"
+      : accent === "tanks"
+        ? "#9ad0ff"
+        : accent === "sokoban"
+          ? "#e8b84a"
+          : "#7dffb3";
 
   return (
     <div

@@ -59,11 +59,31 @@ const TANKS_RULES = [
   },
 ] as const;
 
+const SOKOBAN_RULES = [
+  {
+    title: "目标",
+    body: "所有人拿到同一张推箱子关卡的独立副本。谁先把全部箱子推上目标点谁领先。",
+  },
+  {
+    title: "动作",
+    body: "MOVE_* / WAIT。走到箱子上会尝试沿同方向推动；撞墙或另一箱子则失败。",
+  },
+  {
+    title: "竞速",
+    body: "每人盘面互不影响。完成后停止行动；全员完成或到达 maxTicks 结算。",
+  },
+  {
+    title: "计分",
+    body: "通关：10000 − 10×完成拍 − 步数。未通关：100×已入目标箱数 + 0.1×存活拍。",
+  },
+] as const;
+
 const RULES_BY_GAME: Record<string, readonly { title: string; body: string }[]> =
   {
     arena: ARENA_RULES,
     bomber: BOMBER_RULES,
     tanks: TANKS_RULES,
+    sokoban: SOKOBAN_RULES,
   };
 
 export function RulesPanel({ gameId }: { gameId: string }) {

@@ -130,6 +130,12 @@ export const DEMO_BOTS: Record<string, string[]> = {
     "bomber-sniper",
   ],
   tanks: ["tanks-hunter", "tanks-turtle", "tanks-scout", "tanks-gunner"],
+  sokoban: [
+    "sokoban-pusher",
+    "sokoban-hauler",
+    "sokoban-planner",
+    "sokoban-sprint",
+  ],
 };
 
 export async function startDemoMatch(gameId = "arena"): Promise<MatchReplay> {

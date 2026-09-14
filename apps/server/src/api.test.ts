@@ -10,12 +10,12 @@ describe("API", () => {
     expect(typeof body.running).toBe("boolean");
   });
 
-  test("GET /api/games includes arena, bomber, and tanks", async () => {
+  test("GET /api/games includes all registered games", async () => {
     const res = await app.request("/api/games");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { games: Array<{ id: string }> };
     const ids = body.games.map((g) => g.id).sort();
-    expect(ids).toEqual(["arena", "bomber", "tanks"]);
+    expect(ids).toEqual(["arena", "bomber", "sokoban", "tanks"]);
   });
 
   test("GET /api/bots?game=bomber returns bomber bots", async () => {

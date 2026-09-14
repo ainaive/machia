@@ -11,6 +11,7 @@ import {
 } from "../api";
 import { RulesPanel } from "../RulesPanel";
 import { SiteShell } from "../SiteShell";
+import { gameAccent } from "../gameAccent";
 import { RobotToken, playerColor } from "../sprites";
 
 export function GameLobbyPage() {
@@ -22,8 +23,7 @@ export function GameLobbyPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
 
-  const accent =
-    gameId === "bomber" ? "bomber" : gameId === "tanks" ? "tanks" : "arena";
+  const accent = gameAccent(gameId);
 
   useEffect(() => {
     setSelected([]);

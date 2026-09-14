@@ -2,7 +2,7 @@
 
 AI Bot 多游戏对战演示平台：从本地 `bots/` 加载 Node Bot，沙箱撮合，前端回放。
 
-当前游戏：**Arena**（两拍延迟缩圈）· **Bomber**（炸弹人）· **Tanks**（坦克大战）。
+当前游戏：**Arena** · **Bomber** · **Tanks** · **Sokoban**（同关竞速）。
 
 ## 要求
 
@@ -24,7 +24,7 @@ bun run dev
 | 路径 | 说明 |
 |------|------|
 | `/` | 游戏目录 |
-| `/games/:gameId` | 单游戏大厅（如 `/games/arena`、`/games/bomber`、`/games/tanks`） |
+| `/games/:gameId` | 单游戏大厅（`arena` / `bomber` / `tanks` / `sokoban`） |
 | `/matches/:matchId` | 对局回放（可刷新） |
 
 在大厅里 **一键 Demo** 或勾选 Bot 开局。生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。
@@ -38,6 +38,7 @@ packages/game-api     GamePlugin 接口
 packages/engine       Arena 规则 + 插件
 packages/games-bomber Bomber 规则 + 插件
 packages/games-tanks  Tanks 规则 + 插件
+packages/games-sokoban Sokoban 竞速规则 + 插件
 packages/protocol     Bot 信封类型
 packages/runner       子进程 Runner + 游戏注册表
 bots/                 样例 Bot（manifest.games 声明兼容游戏）

@@ -89,3 +89,13 @@ Actions: `MOVE_UP` `MOVE_DOWN` `MOVE_LEFT` `MOVE_RIGHT` `FIRE` `WAIT`
 - `FIRE` spawns a bullet on the tank (at most one live bullet per owner); bullets advance one cell per tick, vanish on hard walls, kill on hit (1 HP).
 - Observation includes `tiles` (`empty`|`hard`), `bullets`, `players[].facing` / `alive`.
 - Score = `50 * kills + 0.1 * survivalTicks`.
+
+## Sokoban
+
+Actions: `MOVE_UP` `MOVE_DOWN` `MOVE_LEFT` `MOVE_RIGHT` `WAIT`
+
+- Multiplayer **race**: each player gets an independent copy of the same level.
+- Walking into a box pushes it if the cell beyond is free (not wall / box).
+- Observation: `cells`, `goals`, `self` (`pos`, `boxes`, `boxesOnGoal`, `done`, `steps`), and `rivals` progress (not full boards).
+- Finished players stop receiving actions (`isAlive` false). Match ends when all finished or `maxTicks`.
+- Score: solved → `10000 - 10*finishTick - steps`; else `100*boxesOnGoal + 0.1*ticks`.
