@@ -45,6 +45,8 @@ bun run check         # typecheck + test + web build（与 CI 一致）
 
 CI：`.github/workflows/ci.yml`（PR 与 `main`）。给 agent / 贡献者的约定见 [AGENTS.md](AGENTS.md)。
 
+前端回放棋盘使用 SVG 精灵（机器人 / 炸弹 / 墙 / 道具）与 `motion`、`lucide-react` 做动效与控件图标。
+
 ## 添加 Bot
 
 见 [docs/bot-protocol.md](docs/bot-protocol.md)。

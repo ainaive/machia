@@ -40,3 +40,60 @@ body {
     linear-gradient(165deg, #eef3e8 0%, #dfe8d4 45%, #cfd9c0 100%);
   background-attachment: fixed;
 }
+
+@keyframes bomb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes bomb-urgent {
+  0%,
+  100% {
+    transform: scale(1) rotate(-2deg);
+  }
+  50% {
+    transform: scale(1.12) rotate(2deg);
+  }
+}
+
+@keyframes power-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12%);
+  }
+}
+
+@keyframes blast-flash {
+  0% {
+    opacity: 1;
+    transform: scale(0.7);
+  }
+  100% {
+    opacity: 0.55;
+    transform: scale(1.05);
+  }
+}
+
+.animate-bomb-pulse {
+  animation: bomb-pulse 0.9s ease-in-out infinite;
+}
+
+.animate-bomb-urgent {
+  animation: bomb-urgent 0.28s ease-in-out infinite;
+}
+
+.animate-power-bob {
+  animation: power-bob 1.4s ease-in-out infinite;
+}
+
+.animate-blast-flash {
+  animation: blast-flash 0.35s ease-out forwards;
+}

@@ -51,7 +51,10 @@ export function RulesPanel({ gameId }: { gameId: string }) {
       </p>
       <dl className="mt-6 grid gap-5 sm:grid-cols-2">
         {rules.map((rule) => (
-          <div key={rule.title} className="border-l-2 border-moss/40 pl-3">
+          <div
+            key={rule.title}
+            className="rounded-md border border-ink/8 bg-paper/40 px-3 py-3 border-l-[3px] border-l-moss/50"
+          >
             <dt className="font-display text-sm font-bold tracking-wide text-moss">
               {rule.title}
             </dt>
