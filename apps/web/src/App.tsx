@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   fetchBots,
+  fetchGames,
   fetchReplay,
   startDemo,
   startMatch,
   type BotInfo,
+  type GameInfo,
   type MatchReplay,
 } from "./api";
 import { ReplayPlayer } from "./ReplayPlayer";
@@ -16,23 +18,41 @@ type View =
   | { kind: "replay"; replay: MatchReplay; speed: number };
 
 export function App() {
+  const [games, setGames] = useState<GameInfo[]>([]);
+  const [gameId, setGameId] = useState("arena");
   const [bots, setBots] = useState<BotInfo[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>({ kind: "lobby" });
 
+  const game = games.find((g) => g.id === gameId);
+
   useEffect(() => {
-    fetchBots()
-      .then((r) => setBots(r.bots))
+    fetchGames()
+      .then((r) => {
+        setGames(r.games);
+        if (r.games[0] && !r.games.some((g) => g.id === gameId)) {
+          setGameId(r.games[0].id);
+        }
+      })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  useEffect(() => {
+    setSelected([]);
+    fetchBots(gameId)
+      .then((r) => setBots(r.bots))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [gameId]);
 
   async function run(botIds: string[], speed: number, label: string) {
     setError(null);
     setView({ kind: "loading", label });
     try {
       const started =
-        label === "demo" ? await startDemo() : await startMatch(botIds);
+        label === "demo"
+          ? await startDemo(gameId)
+          : await startMatch(gameId, botIds);
       const replay = await fetchReplay(started.matchId);
       setView({ kind: "replay", replay, speed });
     } catch (e) {
@@ -42,12 +62,15 @@ export function App() {
   }
 
   function toggle(id: string) {
+    const max = game?.maxPlayers ?? 8;
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 8) return prev;
+      if (prev.length >= max) return prev;
       return [...prev, id];
     });
   }
+
+  const minP = game?.minPlayers ?? 2;
 
   return (
     <div className="mx-auto flex min-h-full max-w-6xl flex-col px-4 py-8 sm:px-6">
@@ -59,7 +82,7 @@ export function App() {
           Machia
         </h1>
         <p className="mt-3 max-w-xl text-base text-ink/70">
-          提交延迟两拍的公开动作，在缩圈棋盘上争夺核心区。加载本地 Bot，开局后自动慢速回放。
+          多游戏 Bot 对战平台。选一款游戏，加载本地 Bot，开局后自动回放。
         </p>
       </header>
 
@@ -89,11 +112,33 @@ export function App() {
 
       {view.kind === "lobby" && (
         <>
+          <div className="mb-8 flex flex-wrap gap-2">
+            {games.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => setGameId(g.id)}
+                className={`rounded-sm px-4 py-2 font-display text-sm font-bold transition ${
+                  gameId === g.id
+                    ? "bg-moss text-paper"
+                    : "border border-ink/15 bg-paper/60 text-ink hover:bg-paper"
+                }`}
+              >
+                {g.name}
+              </button>
+            ))}
+          </div>
+          {game && (
+            <p className="mb-6 text-sm text-ink/60">{game.description}</p>
+          )}
+
           <div className="grid gap-10 lg:grid-cols-[1fr_280px]">
             <section>
               <div className="mb-4 flex items-end justify-between gap-4">
                 <h2 className="font-display text-2xl font-bold">选择 Bot</h2>
-                <span className="text-sm text-ink/50">{selected.length} / 8</span>
+                <span className="text-sm text-ink/50">
+                  {selected.length} / {game?.maxPlayers ?? 8}
+                </span>
               </div>
               <ul className="divide-y divide-ink/10 border-y border-ink/10">
                 {bots.map((bot) => {
@@ -118,9 +163,7 @@ export function App() {
                         </span>
                         <div>
                           <div className="font-medium">{bot.name}</div>
-                          <div className="text-xs text-ink/50">
-                            {bot.id} · {bot.runtime}
-                          </div>
+                          <div className="text-xs text-ink/50">{bot.id}</div>
                         </div>
                       </button>
                     </li>
@@ -128,7 +171,7 @@ export function App() {
                 })}
                 {bots.length === 0 && (
                   <li className="py-6 text-sm text-ink/50">
-                    未找到 bots/ 目录下的 Bot
+                    当前游戏暂无可用 Bot
                   </li>
                 )}
               </ul>
@@ -143,20 +186,22 @@ export function App() {
                 一键 Demo
               </button>
               <p className="text-xs text-ink/50">
-                Scout / Core Rusher / Turtle / Queue Dodger · 0.75x 自动回放
+                使用 {game?.name ?? "当前游戏"} 样例 Bot · 0.75x 回放
               </p>
               <button
                 type="button"
-                disabled={selected.length < 2}
+                disabled={selected.length < minP}
                 onClick={() => run(selected, 1, "match")}
                 className="w-full rounded-sm bg-moss px-4 py-3 font-medium text-paper transition enabled:hover:bg-moss-deep disabled:cursor-not-allowed disabled:opacity-40"
               >
                 开始对战
               </button>
-              <p className="text-xs text-ink/50">从列表勾选 2–8 个 Bot</p>
+              <p className="text-xs text-ink/50">
+                勾选 {minP}–{game?.maxPlayers ?? 8} 个 Bot
+              </p>
             </section>
           </div>
-          <RulesPanel />
+          <RulesPanel gameId={gameId} />
         </>
       )}
     </div>
