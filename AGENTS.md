@@ -12,6 +12,7 @@ Self-hosted AI bot competition platform (Bun workspaces). Bots are long-lived No
 - `packages/engine` — Arena
 - `packages/games-bomber` — Bomber
 - `packages/games-tanks` — Tanks
+- `packages/games-sokoban` — Sokoban race
 - `packages/protocol` — bot envelope types
 - `packages/runner` — subprocess runner + game registry
 - `bots/` — sample bots (`manifest.json` + `bot.js`)
