@@ -2,7 +2,7 @@
 "use strict";
 
 /**
- * Miner: clear soft walls + grab powerups, then pressure enemies.
+ * Ambusher: move toward mid-map choke, bomb when enemy enters line of fire.
  */
 const readline = require("node:readline");
 const {
@@ -23,6 +23,7 @@ function decide(msg, self) {
   const { tiles, bombs, powerups, players } = msg;
   const danger = blastSet(tiles, bombs);
   const power = self.power || 1;
+  const mid = (msg.mapSize - 1) / 2;
 
   if (danger.has(key(self.pos))) {
     const act = bfsFirstAction(
@@ -50,7 +51,8 @@ function decide(msg, self) {
     if (act && act !== "WAIT") return act;
   }
 
-  if (self.bombsLeft > 0 && softHitsFrom(tiles, self.pos, power) > 0) {
+  const enemy = nearestEnemy(self, players);
+  if (enemy && self.bombsLeft > 0 && bombHits(tiles, self.pos, power, enemy.pos)) {
     const fake = {
       id: -1,
       ownerId: self.id,
@@ -61,35 +63,18 @@ function decide(msg, self) {
     if (findEscape(tiles, bombs, self.pos, fake)) return "PLACE_BOMB";
   }
 
-  const softGoal = bfsFirstAction(
-    tiles,
-    bombs,
-    self.pos,
-    (p) => neighbors(p).some((n) => isSoft(tiles, n)),
-    true,
-  );
-  if (softGoal && softGoal !== "WAIT") return softGoal;
-
-  const enemy = nearestEnemy(self, players);
-  if (enemy) {
-    if (self.bombsLeft > 0 && bombHits(tiles, self.pos, power, enemy.pos)) {
-      const fake = {
-        id: -1,
-        ownerId: self.id,
-        pos: { ...self.pos },
-        fuse: 4,
-        power,
-      };
-      if (findEscape(tiles, bombs, self.pos, fake)) return "PLACE_BOMB";
-    }
-    const chase = bfsFirstAction(
+  // Hold near center ring
+  const onRing =
+    Math.abs(self.pos.x - mid) + Math.abs(self.pos.y - mid) <= 3;
+  if (!onRing) {
+    const toMid = bfsFirstAction(
       tiles,
       bombs,
       self.pos,
-      (p) => p.x === enemy.pos.x && p.y === enemy.pos.y,
+      (p) => Math.abs(p.x - mid) + Math.abs(p.y - mid) <= 2,
       true,
     );
-    if (chase && chase !== "WAIT") return chase;
+    if (toMid && toMid !== "WAIT") return toMid;
 
     if (self.bombsLeft > 0) {
       for (const n of neighbors(self.pos)) {
@@ -104,6 +89,33 @@ function decide(msg, self) {
         if (findEscape(tiles, bombs, self.pos, fake)) return "PLACE_BOMB";
       }
     }
+  }
+
+  if (enemy) {
+    const dist =
+      Math.abs(enemy.pos.x - self.pos.x) + Math.abs(enemy.pos.y - self.pos.y);
+    if (dist > 4) {
+      const chase = bfsFirstAction(
+        tiles,
+        bombs,
+        self.pos,
+        (p) =>
+          Math.abs(p.x - enemy.pos.x) + Math.abs(p.y - enemy.pos.y) <= 2,
+        true,
+      );
+      if (chase && chase !== "WAIT") return chase;
+    }
+  }
+
+  if (self.bombsLeft > 0 && softHitsFrom(tiles, self.pos, power) > 0) {
+    const fake = {
+      id: -1,
+      ownerId: self.id,
+      pos: { ...self.pos },
+      fuse: 4,
+      power,
+    };
+    if (findEscape(tiles, bombs, self.pos, fake)) return "PLACE_BOMB";
   }
 
   return "WAIT";

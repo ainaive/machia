@@ -123,7 +123,12 @@ export async function startMatch(
 
 export const DEMO_BOTS: Record<string, string[]> = {
   arena: ["random-walker", "core-rusher", "turtle", "queue-dodger"],
-  bomber: ["bomber-rusher", "bomber-turtle"],
+  bomber: [
+    "bomber-rusher",
+    "bomber-turtle",
+    "bomber-ambusher",
+    "bomber-sniper",
+  ],
 };
 
 export async function startDemoMatch(gameId = "arena"): Promise<MatchReplay> {

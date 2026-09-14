@@ -1,5 +1,5 @@
 {
-  "name": "Bomber Turtle",
+  "name": "Miner",
   "runtime": "node",
   "entry": "bot.js",
   "games": ["bomber"]
