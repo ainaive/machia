@@ -40,6 +40,7 @@ export function ReplayPlayer({
   const isTanks = gameId === "tanks";
   const isSokoban = gameId === "sokoban";
   const isHoldem = gameId === "holdem";
+  const isQuoridor = gameId === "quoridor";
   const progress = max > 0 ? index / max : 0;
 
   useEffect(() => {
@@ -163,19 +164,25 @@ export function ReplayPlayer({
           <div className="flex items-center gap-2 border-b border-ink/10 bg-moss/10 px-3 py-2">
             <Swords size={16} className="text-moss" />
             <span className="font-display text-sm font-bold">
-              {isHoldem
-                ? "Hold'em"
-                : isSokoban
-                  ? "Sokoban"
-                  : isTanks
-                    ? "Tanks"
-                    : isBomber
-                      ? "Bomber"
-                      : "Arena"}
+              {isQuoridor
+                ? "Quoridor"
+                : isHoldem
+                  ? "Hold'em"
+                  : isSokoban
+                    ? "Sokoban"
+                    : isTanks
+                      ? "Tanks"
+                      : isBomber
+                        ? "Bomber"
+                        : "Arena"}
             </span>
           </div>
           <p className="px-3 py-2.5 text-xs leading-relaxed text-ink/65">
-            {isHoldem ? (
+            {isQuoridor ? (
+              <>
+                木色条是挡板。棋子朝向目标边，身上数字为剩余挡板。高亮环为当前行动者。
+              </>
+            ) : isHoldem ? (
               <>
                 牌桌中央是公共牌与底池。高亮座位表示当前行动者。回放以旁观者视角展示底牌。
               </>
@@ -241,9 +248,13 @@ export function ReplayPlayer({
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{p.name}</div>
                     <div className="truncate text-xs text-ink/55">
-                      {!alive && !isSokoban
+                      {!alive && !isSokoban && !isQuoridor
                         ? `阵亡 @${result?.deathTick ?? "?"}`
-                        : isHoldem
+                        : isQuoridor
+                          ? (view as { finished?: boolean }).finished
+                            ? `抵达 · 板 ${(view as { fences?: number }).fences ?? "-"}`
+                            : `板 ${(view as { fences?: number }).fences ?? "-"} · ${(view as { goal?: string }).goal ?? ""}`
+                          : isHoldem
                           ? `栈 ${(view as { stack?: number }).stack ?? "-"} · 注 ${(view as { bet?: number }).bet ?? 0}${(view as { folded?: boolean }).folded ? " · 弃牌" : ""}`
                           : isSokoban
                           ? view &&

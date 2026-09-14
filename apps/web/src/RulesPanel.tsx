@@ -97,6 +97,25 @@ const HOLDEM_RULES = [
   },
 ] as const;
 
+const QUORIDOR_RULES = [
+  {
+    title: "目标",
+    body: "7×7 岔路竞速：率先抵达对面目标边。棋子数字为剩余挡板数；彩色边格为目标边。",
+  },
+  {
+    title: "行动",
+    body: "顺序行动。每回合可移动一步（或跳过相邻棋子），或放置一块长度为 2 的挡板。挡板不能把任何人完全封死。",
+  },
+  {
+    title: "动作",
+    body: "MOVE:N/S/E/W · JUMP:… · WALL:H|V:x:y · WAIT。非法/WAIT 会自动朝目标走近。",
+  },
+  {
+    title: "计分",
+    body: "抵达：10000 − 10×完成拍。未抵达：按剩余最短路径距离给分。",
+  },
+] as const;
+
 const RULES_BY_GAME: Record<string, readonly { title: string; body: string }[]> =
   {
     arena: ARENA_RULES,
@@ -104,6 +123,7 @@ const RULES_BY_GAME: Record<string, readonly { title: string; body: string }[]> 
     tanks: TANKS_RULES,
     sokoban: SOKOBAN_RULES,
     holdem: HOLDEM_RULES,
+    quoridor: QUORIDOR_RULES,
   };
 
 export function RulesPanel({ gameId }: { gameId: string }) {

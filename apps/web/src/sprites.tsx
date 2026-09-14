@@ -29,7 +29,7 @@ interface TokenProps {
   size: number;
   facing?: string;
   label?: string | number;
-  accent?: "arena" | "bomber" | "tanks" | "sokoban" | "holdem";
+  accent?: "arena" | "bomber" | "tanks" | "sokoban" | "holdem" | "quoridor";
   dim?: boolean;
 }
 
@@ -52,7 +52,9 @@ export function RobotToken({
           ? "#e8b84a"
           : accent === "holdem"
             ? "#e8efe0"
-            : "#7dffb3";
+            : accent === "quoridor"
+              ? "#f0c56a"
+              : "#7dffb3";
 
   return (
     <div

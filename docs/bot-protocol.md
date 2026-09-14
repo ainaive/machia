@@ -108,3 +108,13 @@ Actions: `FOLD` `CHECK` `CALL` `RAISE` `WAIT`
 - **Sequential** betting: only `toAct` must act each tick; `isAlive` is true only for that seat.
 - Observation includes private `self.hole`, public `community`, `pot`, `currentBet`, `legal`, and masked rival holes (`??`) until showdown.
 - Score = remaining stack after the hand.
+
+## Quoridor
+
+Actions: `MOVE:N|S|E|W` `JUMP:…` `WALL:H|V:x:y` `WAIT` (or object form `{type,dir}` / `{type,orient,x,y}`)
+
+- 7×7 board (demo); 2–4 players. Reach your opposite edge first.
+- **Sequential** turns: only `toAct` is alive each tick (same pattern as Hold'em).
+- Orthogonal move, or jump over an adjacent pawn; place length-2 fences that never fully cut any player's path.
+- Observation includes `walls`, `legal` (string keys), `self` / `players` with `pos`, `fences`, `goal`.
+- Score: finished → `10000 - 10*finishTick`; else distance-based consolation.

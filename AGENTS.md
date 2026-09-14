@@ -14,6 +14,7 @@ Self-hosted AI bot competition platform (Bun workspaces). Bots are long-lived No
 - `packages/games-tanks` — Tanks
 - `packages/games-sokoban` — Sokoban race
 - `packages/games-holdem` — Texas Hold'em
+- `packages/games-quoridor` — Quoridor
 - `packages/protocol` — bot envelope types
 - `packages/runner` — subprocess runner + game registry
 - `bots/` — sample bots (`manifest.json` + `bot.js`)
