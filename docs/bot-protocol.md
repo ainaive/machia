@@ -99,3 +99,12 @@ Actions: `MOVE_UP` `MOVE_DOWN` `MOVE_LEFT` `MOVE_RIGHT` `WAIT`
 - Observation: `cells`, `goals`, `self` (`pos`, `boxes`, `boxesOnGoal`, `done`, `steps`), and `rivals` progress (not full boards).
 - Finished players stop receiving actions (`isAlive` false). Match ends when all finished or `maxTicks`.
 - Score: solved → `10000 - 10*finishTick - steps`; else `100*boxesOnGoal + 0.1*ticks`.
+
+## Hold'em
+
+Actions: `FOLD` `CHECK` `CALL` `RAISE` `WAIT`
+
+- One hand per match (2–4 seats). Starting stack 100; blinds 1/2; fixed raise size 4.
+- **Sequential** betting: only `toAct` must act each tick; `isAlive` is true only for that seat.
+- Observation includes private `self.hole`, public `community`, `pot`, `currentBet`, `legal`, and masked rival holes (`??`) until showdown.
+- Score = remaining stack after the hand.
