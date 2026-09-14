@@ -15,7 +15,7 @@ describe("API", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { games: Array<{ id: string }> };
     const ids = body.games.map((g) => g.id).sort();
-    expect(ids).toEqual(["arena", "bomber", "sokoban", "tanks"]);
+    expect(ids).toEqual(["arena", "bomber", "holdem", "sokoban", "tanks"]);
   });
 
   test("GET /api/bots?game=bomber returns bomber bots", async () => {

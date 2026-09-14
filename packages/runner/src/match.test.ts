@@ -143,3 +143,35 @@ describe("runMatch sokoban", () => {
     expect(replay.ticks[0]?.cells).toBeDefined();
   }, 25_000);
 });
+
+function holdemPlayer(id: string) {
+  const botDir = path.join(botsRoot, id);
+  return {
+    botId: id,
+    botDir,
+    manifest: {
+      name: id,
+      runtime: "node" as const,
+      entry: "bot.js",
+      games: ["holdem"],
+    },
+  };
+}
+
+describe("runMatch holdem", () => {
+  test("completes a short heads-up hand", async () => {
+    const replay = await runMatch({
+      id: "test-match-holdem",
+      gameId: "holdem",
+      maxTicks: 120,
+      players: [holdemPlayer("holdem-tight"), holdemPlayer("holdem-loose")],
+    });
+
+    expect(replay.gameId).toBe("holdem");
+    expect(replay.ticks.length).toBeGreaterThan(0);
+    expect(replay.results).toHaveLength(2);
+    expect(replay.ticks[0]?.street).toBeDefined();
+    const stacks = replay.results.reduce((a, r) => a + r.score, 0);
+    expect(stacks).toBe(200);
+  }, 25_000);
+});

@@ -118,6 +118,7 @@
         "@machia/engine": "workspace:*",
         "@machia/game-api": "workspace:*",
         "@machia/games-bomber": "workspace:*",
+        "@machia/games-holdem": "workspace:*",
         "@machia/games-sokoban": "workspace:*",
         "@machia/games-tanks": "workspace:*",
         "@machia/protocol": "workspace:*",
