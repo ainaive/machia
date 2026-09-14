@@ -68,6 +68,17 @@
         "typescript": "^5.9.2",
       },
     },
+    "packages/games-sokoban": {
+      "name": "@machia/games-sokoban",
+      "version": "0.1.0",
+      "dependencies": {
+        "@machia/game-api": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.9.2",
+      },
+    },
     "packages/games-tanks": {
       "name": "@machia/games-tanks",
       "version": "0.1.0",
@@ -211,6 +222,8 @@
     "@machia/game-api": ["@machia/game-api@workspace:packages/game-api"],
 
     "@machia/games-bomber": ["@machia/games-bomber@workspace:packages/games-bomber"],
+
+    "@machia/games-sokoban": ["@machia/games-sokoban@workspace:packages/games-sokoban"],
 
     "@machia/games-tanks": ["@machia/games-tanks@workspace:packages/games-tanks"],
 
