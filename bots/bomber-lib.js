@@ -2,11 +2,16 @@
 "use strict";
 
 /**
- * Bomber bot brain — prioritizes not dying to own bombs.
+ * Bomber bot brain.
+ * Survival first; endgame forces engagement without A↔B tile fights / oscillation.
  */
 
 function key(p) {
   return `${p.x},${p.y}`;
+}
+
+function manhattan(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
 function neighbors(pos) {
@@ -16,6 +21,17 @@ function neighbors(pos) {
     { x: pos.x - 1, y: pos.y, action: "MOVE_LEFT" },
     { x: pos.x + 1, y: pos.y, action: "MOVE_RIGHT" },
   ];
+}
+
+function opposite(action) {
+  return (
+    {
+      MOVE_UP: "MOVE_DOWN",
+      MOVE_DOWN: "MOVE_UP",
+      MOVE_LEFT: "MOVE_RIGHT",
+      MOVE_RIGHT: "MOVE_LEFT",
+    }[action] || null
+  );
 }
 
 function inBounds(tiles, p) {
@@ -43,6 +59,12 @@ function bombAt(bombs, p) {
   return bombs.some((b) => b.pos.x === p.x && b.pos.y === p.y);
 }
 
+function countSoft(tiles) {
+  let n = 0;
+  for (const row of tiles) for (const t of row) if (t === "soft") n++;
+  return n;
+}
+
 function blastSet(tiles, bombs) {
   const danger = new Set();
   for (const b of bombs) {
@@ -65,15 +87,9 @@ function blastSet(tiles, bombs) {
 }
 
 function bombsThreatening(tiles, bombs, pos) {
-  const danger = blastSet(tiles, bombs);
-  if (!danger.has(key(pos))) return [];
-  return bombs.filter((b) => {
-    const one = blastSet(tiles, [b]);
-    return one.has(key(pos));
-  });
+  return bombs.filter((b) => blastSet(tiles, [b]).has(key(pos)));
 }
 
-/** Moves left before the soonest threatening bomb explodes (observation-time fuse). */
 function movesBeforeBlast(tiles, bombs, pos) {
   const th = bombsThreatening(tiles, bombs, pos);
   if (!th.length) return Infinity;
@@ -120,10 +136,6 @@ function softHitsFrom(tiles, pos, power) {
   return n;
 }
 
-/**
- * First MOVE that leads to a non-danger cell within maxSteps.
- * Never returns PLACE_BOMB.
- */
 function escapeMove(tiles, bombs, start, danger, maxSteps) {
   if (!danger.has(key(start))) return null;
   const q = [{ p: start, d: 0, first: null }];
@@ -142,7 +154,6 @@ function escapeMove(tiles, bombs, start, danger, maxSteps) {
       q.push({ p: np, d: d + 1, first: firstAction });
     }
   }
-  // no full escape — step to any neighbor that reduces… or any open neighbor
   for (const n of neighbors(start)) {
     const np = { x: n.x, y: n.y };
     if (isEmpty(tiles, np) && !bombAt(bombs, np)) return n.action;
@@ -150,8 +161,7 @@ function escapeMove(tiles, bombs, start, danger, maxSteps) {
   return null;
 }
 
-/** After placing a bomb here, can we reach safety in `maxSteps` moves? */
-function canEscapeAfterBomb(tiles, bombs, start, power, maxSteps = 3) {
+function canEscapeAfterBomb(tiles, bombs, start, power, maxSteps = 2) {
   const fake = {
     id: -1,
     ownerId: -1,
@@ -161,7 +171,9 @@ function canEscapeAfterBomb(tiles, bombs, start, power, maxSteps = 3) {
   };
   const danger = blastSet(tiles, bombs.concat([fake]));
   if (!danger.has(key(start))) return true;
-  return escapeMove(tiles, bombs.concat([fake]), start, danger, maxSteps) != null;
+  return (
+    escapeMove(tiles, bombs.concat([fake]), start, danger, maxSteps) != null
+  );
 }
 
 function hasLiveOwnBomb(bombs, selfId) {
@@ -205,7 +217,30 @@ function planToward(tiles, bombs, start, goalFn, avoidDanger) {
   return null;
 }
 
-function safeRoam(tiles, bombs, pos, danger, tick) {
+function stepPos(pos, action) {
+  if (action === "MOVE_UP") return { x: pos.x, y: pos.y - 1 };
+  if (action === "MOVE_DOWN") return { x: pos.x, y: pos.y + 1 };
+  if (action === "MOVE_LEFT") return { x: pos.x - 1, y: pos.y };
+  if (action === "MOVE_RIGHT") return { x: pos.x + 1, y: pos.y };
+  return pos;
+}
+
+function pickMove(options, pos, memory) {
+  if (!options.length) return null;
+  const scored = options.map((action) => {
+    const next = stepPos(pos, action);
+    let score = 0;
+    if (memory.lastAction && action === opposite(memory.lastAction)) score -= 6;
+    if (memory.recent.includes(key(next))) score -= 3;
+    else score += 2;
+    score += (action.charCodeAt(5) + (memory.salt || 0)) % 3;
+    return { action, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].action;
+}
+
+function listSafeMoves(tiles, bombs, pos, danger) {
   const opts = [];
   for (const n of neighbors(pos)) {
     const p = { x: n.x, y: n.y };
@@ -213,33 +248,64 @@ function safeRoam(tiles, bombs, pos, danger, tick) {
     if (danger.has(key(p))) continue;
     opts.push(n.action);
   }
-  if (!opts.length) return null;
-  return opts[tick % opts.length];
+  return opts;
 }
 
 function nearestEnemy(self, players) {
   const enemies = players.filter((p) => p.id !== self.id && p.alive);
   enemies.sort(
-    (a, b) =>
-      Math.abs(a.pos.x - self.pos.x) +
-      Math.abs(a.pos.y - self.pos.y) -
-      (Math.abs(b.pos.x - self.pos.x) + Math.abs(b.pos.y - self.pos.y)),
+    (a, b) => manhattan(self.pos, a.pos) - manhattan(self.pos, b.pos),
   );
   return enemies[0] || null;
 }
 
-/**
- * @param {"hunter"|"miner"|"ambusher"|"sniper"} style
- */
+function occupied(players, selfId, p) {
+  return players.some(
+    (pl) =>
+      pl.alive && pl.id !== selfId && pl.pos.x === p.x && pl.pos.y === p.y,
+  );
+}
+
+const memory = {
+  recent: [],
+  lastAction: null,
+  lastPos: null,
+  stuck: 0,
+  salt: Math.floor(Math.random() * 17),
+  wp: null,
+  wpUntil: -1,
+};
+
 function decide(msg, self, style = "hunter") {
   const { tiles, bombs, powerups, players } = msg;
   const danger = blastSet(tiles, bombs);
   const power = self.power || 1;
-  const mid = (msg.mapSize - 1) / 2;
-  const enemy = nearestEnemy(self, players);
-  const ownBombLive = hasLiveOwnBomb(bombs, self.id);
+  const softLeft = countSoft(tiles);
+  const endgame = softLeft <= 10 || msg.tick >= 50;
+  const huntStyle = endgame ? "hunter" : style;
 
-  // ——— Survival first ———
+  const enemy = nearestEnemy(self, players);
+  const allowBomb = self.bombsLeft > 0 && !hasLiveOwnBomb(bombs, self.id);
+
+  // Position unchanged after a MOVE ⇒ collision cancel / stuck
+  if (
+    memory.lastPos &&
+    key(memory.lastPos) === key(self.pos) &&
+    memory.lastAction &&
+    String(memory.lastAction).startsWith("MOVE")
+  ) {
+    memory.stuck += 1;
+  } else if (memory.lastPos && key(memory.lastPos) !== key(self.pos)) {
+    memory.stuck = 0;
+  }
+  memory.lastPos = { ...self.pos };
+
+  const finish = (action) => {
+    memory.lastAction = action;
+    return action;
+  };
+
+  // 1) Survive
   if (danger.has(key(self.pos))) {
     const steps = movesBeforeBlast(tiles, bombs, self.pos);
     const move = escapeMove(
@@ -249,122 +315,195 @@ function decide(msg, self, style = "hunter") {
       danger,
       Number.isFinite(steps) ? steps : 3,
     );
-    if (move) return move;
-    return "WAIT";
+    return finish(move || "WAIT");
   }
 
-  // While our bomb is live: do not place another; stay out of its blast (already out)
-  // Prefer picking powerups / positioning, never bomb.
-  const allowBomb = self.bombsLeft > 0 && !ownBombLive;
+  // 2) Stuck: bomb or sidestep — do not keep retrying the same contested step
+  if (memory.stuck >= 2) {
+    if (
+      enemy &&
+      allowBomb &&
+      manhattan(self.pos, enemy.pos) <= Math.max(2, power) &&
+      canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)
+    ) {
+      memory.stuck = 0;
+      return finish("PLACE_BOMB");
+    }
+    const opts = listSafeMoves(tiles, bombs, self.pos, danger).filter((a) => {
+      const dest = stepPos(self.pos, a);
+      return (
+        a !== memory.lastAction &&
+        a !== opposite(memory.lastAction) &&
+        !occupied(players, self.id, dest)
+      );
+    });
+    const alt = pickMove(opts, self.pos, memory);
+    if (alt) {
+      memory.stuck = 0;
+      return finish(alt);
+    }
+  }
 
-  // Powerups (safe path only)
+  // 3) Powerups
   if (powerups.length) {
     const plan = planToward(
       tiles,
       bombs,
       self.pos,
-      (p) => powerups.some((u) => u.pos.x === p.x && u.pos.y === p.y),
+      (p) =>
+        powerups.some((u) => u.pos.x === p.x && u.pos.y === p.y) &&
+        !occupied(players, self.id, p),
       true,
     );
-    if (plan && plan.kind === "move") return plan.action;
+    if (plan && plan.kind === "move") return finish(plan.action);
   }
 
-  // Offensive / farming bomb — only if clear escape in 3 moves
-  if (allowBomb) {
-    const hitsEnemy =
-      enemy && bombHits(tiles, self.pos, power, enemy.pos);
-    const hitsSoft = softHitsFrom(tiles, self.pos, power) > 0;
+  // 4) Fight
+  if (enemy) {
+    const dist = manhattan(self.pos, enemy.pos);
 
-    let wantBomb = false;
-    if (style === "sniper") {
-      wantBomb =
-        hitsEnemy &&
-        Math.abs(enemy.pos.x - self.pos.x) +
-          Math.abs(enemy.pos.y - self.pos.y) >=
-          2;
-    } else if (style === "miner") {
-      wantBomb = hitsSoft || hitsEnemy;
-    } else if (style === "ambusher") {
-      wantBomb = hitsEnemy || (hitsSoft && msg.tick % 4 === 0);
-    } else {
-      // hunter: enemy preferred, soft only if blocking
-      wantBomb = hitsEnemy || hitsSoft;
+    // Next to enemy → bomb (never walk onto them)
+    if (dist === 1 && allowBomb) {
+      if (canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)) {
+        return finish("PLACE_BOMB");
+      }
     }
 
-    if (wantBomb && canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)) {
-      return "PLACE_BOMB";
+    if (
+      allowBomb &&
+      bombHits(tiles, self.pos, power, enemy.pos) &&
+      (huntStyle !== "sniper" || dist >= 2)
+    ) {
+      if (canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)) {
+        return finish("PLACE_BOMB");
+      }
     }
   }
 
-  // Path toward style goal (through soft = need_bomb at current cell only if we can escape)
-  let goalFn = null;
-  if (style === "miner") {
-    goalFn = (p) => isSoft(tiles, p);
-  } else if (style === "ambusher") {
-    const onRing = Math.abs(self.pos.x - mid) + Math.abs(self.pos.y - mid) <= 3;
-    if (!onRing) {
-      goalFn = (p) => Math.abs(p.x - mid) + Math.abs(p.y - mid) <= 2;
-    } else if (enemy) {
-      goalFn = (p) =>
-        Math.abs(p.x - enemy.pos.x) + Math.abs(p.y - enemy.pos.y) <= 2;
-    }
-  } else if (style === "sniper" && enemy) {
-    goalFn = (p) => {
-      if (!(p.x === enemy.pos.x || p.y === enemy.pos.y)) return false;
-      const d = Math.abs(p.x - enemy.pos.x) + Math.abs(p.y - enemy.pos.y);
-      return d >= 2 && d <= Math.max(2, power);
-    };
-  }
-  if (!goalFn && enemy) {
-    goalFn = (p) => p.x === enemy.pos.x && p.y === enemy.pos.y;
+  // 5) Early soft farm
+  if (
+    !endgame &&
+    allowBomb &&
+    huntStyle === "miner" &&
+    softHitsFrom(tiles, self.pos, power) > 0 &&
+    canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)
+  ) {
+    return finish("PLACE_BOMB");
   }
 
-  if (goalFn) {
-    const plan = planToward(tiles, bombs, self.pos, goalFn, true);
-    if (plan && plan.kind === "move") return plan.action;
+  // 6) Per-bot engage waypoint (free cell near enemy, not shared)
+  if (enemy) {
+    const needNewWp =
+      !memory.wp ||
+      msg.tick >= memory.wpUntil ||
+      manhattan(memory.wp, enemy.pos) > 3 ||
+      occupied(players, self.id, memory.wp) ||
+      !isEmpty(tiles, memory.wp) ||
+      danger.has(key(memory.wp));
+
+    if (needNewWp) {
+      const candidates = [];
+      for (const n of neighbors(enemy.pos)) {
+        const p = { x: n.x, y: n.y };
+        if (
+          isEmpty(tiles, p) &&
+          !bombAt(bombs, p) &&
+          !danger.has(key(p)) &&
+          !occupied(players, self.id, p)
+        ) {
+          candidates.push(p);
+        }
+      }
+      // also distance-2 anchors for sniper-ish spacing
+      for (const dir of [
+        { x: 2, y: 0 },
+        { x: -2, y: 0 },
+        { x: 0, y: 2 },
+        { x: 0, y: -2 },
+      ]) {
+        const p = { x: enemy.pos.x + dir.x, y: enemy.pos.y + dir.y };
+        if (
+          isEmpty(tiles, p) &&
+          !bombAt(bombs, p) &&
+          !danger.has(key(p)) &&
+          !occupied(players, self.id, p)
+        ) {
+          candidates.push(p);
+        }
+      }
+      if (candidates.length) {
+        const idx =
+          (self.id * 5 + Math.floor(msg.tick / 7) + memory.salt) %
+          candidates.length;
+        memory.wp = candidates[idx];
+      } else {
+        memory.wp = null;
+      }
+      memory.wpUntil = msg.tick + 5 + self.id;
+    }
+
+    if (memory.wp && key(self.pos) !== key(memory.wp)) {
+      const plan = planToward(
+        tiles,
+        bombs,
+        self.pos,
+        (p) => key(p) === key(memory.wp),
+        true,
+      );
+      if (plan && plan.kind === "move") {
+        const dest = stepPos(self.pos, plan.action);
+        if (!occupied(players, self.id, dest) && !danger.has(key(dest))) {
+          return finish(plan.action);
+        }
+      }
+      if (plan && plan.kind === "need_bomb" && allowBomb) {
+        if (
+          softHitsFrom(tiles, self.pos, power) > 0 &&
+          canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)
+        ) {
+          return finish("PLACE_BOMB");
+        }
+      }
+    } else if (memory.wp && key(self.pos) === key(memory.wp)) {
+      memory.wpUntil = msg.tick;
+      if (
+        allowBomb &&
+        enemy &&
+        bombHits(tiles, self.pos, power, enemy.pos) &&
+        canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)
+      ) {
+        return finish("PLACE_BOMB");
+      }
+    }
+  }
+
+  // 7) Early soft path
+  if (!endgame) {
+    const plan = planToward(
+      tiles,
+      bombs,
+      self.pos,
+      (p) => isSoft(tiles, p),
+      true,
+    );
+    if (plan && plan.kind === "move") return finish(plan.action);
     if (plan && plan.kind === "need_bomb" && allowBomb) {
       if (
         softHitsFrom(tiles, self.pos, power) > 0 &&
         canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)
       ) {
-        return "PLACE_BOMB";
-      }
-      // can't bomb safely — sidestep to a better angle
-      const roam = safeRoam(tiles, bombs, self.pos, danger, msg.tick);
-      if (roam) return roam;
-    }
-    if (plan && plan.kind === "at_goal" && allowBomb) {
-      // standing on goal (e.g. next to soft via soft cell goal) — try farm bomb
-      if (
-        softHitsFrom(tiles, self.pos, power) > 0 &&
-        canEscapeAfterBomb(tiles, bombs, self.pos, power, 2)
-      ) {
-        return "PLACE_BOMB";
+        return finish("PLACE_BOMB");
       }
     }
   }
 
-  // Approach a safe bombing tile (soft in range + escape)
-  if (allowBomb) {
-    const plan = planToward(
-      tiles,
-      bombs,
-      self.pos,
-      (p) => {
-        if (!isEmpty(tiles, p)) return false;
-        if (softHitsFrom(tiles, p, power) <= 0) return false;
-        return canEscapeAfterBomb(tiles, bombs, p, power, 2);
-      },
-      true,
-    );
-    if (plan && plan.kind === "move") return plan.action;
-  }
-
-  // Roam without entering danger
-  const roam = safeRoam(tiles, bombs, self.pos, danger, msg.tick + self.id);
-  if (roam) return roam;
-
-  return "WAIT";
+  // 8) Explore
+  const opts = listSafeMoves(tiles, bombs, self.pos, danger).filter((a) => {
+    const dest = stepPos(self.pos, a);
+    return !occupied(players, self.id, dest);
+  });
+  const move = pickMove(opts, self.pos, memory);
+  return finish(move || "WAIT");
 }
 
 module.exports = {
