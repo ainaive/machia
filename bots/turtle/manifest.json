@@ -1,5 +1,6 @@
 {
   "name": "Turtle",
   "runtime": "node",
-  "entry": "bot.js"
+  "entry": "bot.js",
+  "games": ["arena"]
 }
