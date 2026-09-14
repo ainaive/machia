@@ -11,6 +11,7 @@ Self-hosted AI bot competition platform (Bun workspaces). Bots are long-lived No
 - `packages/game-api` — `GamePlugin` interfaces
 - `packages/engine` — Arena
 - `packages/games-bomber` — Bomber
+- `packages/games-tanks` — Tanks
 - `packages/protocol` — bot envelope types
 - `packages/runner` — subprocess runner + game registry
 - `bots/` — sample bots (`manifest.json` + `bot.js`)

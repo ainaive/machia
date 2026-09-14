@@ -79,3 +79,13 @@ Actions: `MOVE_UP` `MOVE_DOWN` `MOVE_LEFT` `MOVE_RIGHT` `PLACE_BOMB` `WAIT`
 - Bombs fuse for 4 ticks (countdown starts the placement tick), then explode in a cross; soft walls break; hard walls block.
 - Observation includes `tiles`, `bombs` (with `fuse`), `powerups`, player `power` / `bombsLeft`, plus `hazardRing` / `duelTicks` in 1v1 overtime.
 - When exactly two players remain: every 18 duel ticks the hazard ring grows (outer empty cells become lethal); duel ends by ~90 ticks if still tied.
+
+## Tanks
+
+Actions: `MOVE_UP` `MOVE_DOWN` `MOVE_LEFT` `MOVE_RIGHT` `FIRE` `WAIT`
+
+- Actions apply **immediately**.
+- `MOVE_*` sets facing and attempts to move one cell; blocked by hard walls / other tanks.
+- `FIRE` spawns a bullet on the tank (at most one live bullet per owner); bullets advance one cell per tick, vanish on hard walls, kill on hit (1 HP).
+- Observation includes `tiles` (`empty`|`hard`), `bullets`, `players[].facing` / `alive`.
+- Score = `50 * kills + 0.1 * survivalTicks`.

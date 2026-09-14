@@ -40,8 +40,34 @@ const BOMBER_RULES = [
   },
 ] as const;
 
+const TANKS_RULES = [
+  {
+    title: "目标",
+    body: "在硬墙迷宫里开坦克互射。最后存活者获胜；也可靠击杀拿高分。",
+  },
+  {
+    title: "即时动作",
+    body: "MOVE_* 会转向并尝试前进一格；FIRE 沿当前朝向发射；WAIT。本拍提交本拍生效。",
+  },
+  {
+    title: "子弹",
+    body: "每辆坦克同时最多一发子弹；子弹每拍前进一格，撞墙消失，命中即死（1 命）。",
+  },
+  {
+    title: "计分",
+    body: "得分 = 50×击杀 + 0.1×存活拍。",
+  },
+] as const;
+
+const RULES_BY_GAME: Record<string, readonly { title: string; body: string }[]> =
+  {
+    arena: ARENA_RULES,
+    bomber: BOMBER_RULES,
+    tanks: TANKS_RULES,
+  };
+
 export function RulesPanel({ gameId }: { gameId: string }) {
-  const rules = gameId === "bomber" ? BOMBER_RULES : ARENA_RULES;
+  const rules = RULES_BY_GAME[gameId] ?? ARENA_RULES;
   return (
     <section className="mt-12 border-t border-ink/10 pt-8">
       <h2 className="font-display text-2xl font-bold">游戏规则</h2>

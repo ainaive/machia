@@ -22,7 +22,8 @@ export function GameLobbyPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
 
-  const accent = gameId === "bomber" ? "bomber" : "arena";
+  const accent =
+    gameId === "bomber" ? "bomber" : gameId === "tanks" ? "tanks" : "arena";
 
   useEffect(() => {
     setSelected([]);

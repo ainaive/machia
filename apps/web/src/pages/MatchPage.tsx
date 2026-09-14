@@ -62,7 +62,8 @@ export function MatchPage() {
   }
 
   const gameId = replay.gameId ?? "arena";
-  const accent = gameId === "bomber" ? "bomber" : "arena";
+  const accent =
+    gameId === "bomber" ? "bomber" : gameId === "tanks" ? "tanks" : "arena";
 
   return (
     <SiteShell accent={accent}>
