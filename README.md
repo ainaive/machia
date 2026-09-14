@@ -35,11 +35,15 @@ bots/                 样例 Bot（manifest.games 声明兼容游戏）
 docs/                 协议说明
 ```
 
-## 测试
+## 测试与质量
 
 ```bash
-bun test
+bun test              # 引擎 / Runner / API
+bun run typecheck
+bun run check         # typecheck + test + web build（与 CI 一致）
 ```
+
+CI：`.github/workflows/ci.yml`（PR 与 `main`）。给 agent / 贡献者的约定见 [AGENTS.md](AGENTS.md)。
 
 ## 添加 Bot
 

@@ -10,7 +10,7 @@ import {
   startMatch,
 } from "./matches";
 
-const app = new Hono();
+export const app = new Hono();
 
 app.use(
   "/api/*",
@@ -110,4 +110,6 @@ export default {
   fetch: app.fetch,
 };
 
-console.log(`Machia server listening on http://localhost:${port}`);
+if (import.meta.main) {
+  console.log(`Machia server listening on http://localhost:${port}`);
+}

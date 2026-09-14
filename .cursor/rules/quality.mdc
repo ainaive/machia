@@ -1,0 +1,16 @@
+---
+description: Machia quality bar — tests, docs, CI gates
+alwaysApply: true
+---
+
+# Quality gates
+
+Follow root [AGENTS.md](../../AGENTS.md).
+
+When adding or changing features/behavior:
+
+1. Update or add tests in the same change.
+2. Update docs (`docs/bot-protocol.md`, README, `RulesPanel`) when rules, protocol, or UX change.
+3. Before finishing: `bun run typecheck` and `bun test` (prefer `bun run check`).
+
+Do not leave tests or docs as follow-ups.

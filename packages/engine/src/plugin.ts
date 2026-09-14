@@ -1,8 +1,5 @@
-import {
-  GameEngine,
-  normalizeAction as normalizeArenaAction,
-  type Action,
-} from "./game";
+import { GameEngine, normalizeAction as normalizeArenaAction } from "./game";
+import type { Action } from "./types";
 import type {
   GameCreateConfig,
   GameInstance,
