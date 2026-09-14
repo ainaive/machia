@@ -28,11 +28,11 @@ export interface LevelData {
   boxes: Position[];
 }
 
-/** Compact race level — one box, short path (demo-friendly). */
+/** Compact one-box race — reliably solved by sample BFS bots in a few steps. */
 export const DEFAULT_LEVEL_ROWS = [
   "#######",
   "#     #",
-  "# @$  #",
+  "#  $@ #",
   "#  .  #",
   "#     #",
   "#######",
