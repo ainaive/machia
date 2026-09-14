@@ -6,7 +6,7 @@ Instructions for humans and coding agents working in this repository.
 
 Self-hosted AI bot competition platform (Bun workspaces). Bots are long-lived Node processes (stdin/stdout JSON). Matches run server-side; the web app replays them.
 
-- `apps/web` — Vite + React lobby / replay
+- `apps/web` — Vite + React（`/` 目录、`/games/:gameId` 大厅、`/matches/:id` 回放）
 - `apps/server` — Hono API
 - `packages/game-api` — `GamePlugin` interfaces
 - `packages/engine` — Arena
@@ -36,7 +36,7 @@ Prefer `bun run check` locally; CI runs the same gates on every PR and `main` pu
 | Runner / match flow | `packages/runner` tests (registry + `runMatch`) |
 | API / matches | `apps/server` tests (`api.test.ts`, `matches.test.ts`) |
 | Sample bots | Keep demos playable; if protocol or style assumptions change, note in README or protocol docs |
-| New game plugin | Register in `packages/runner` registry; API games list; web picker + board + rules; sample bots; protocol appendix; tests for engine + short `runMatch` |
+| New game plugin | Register in `packages/runner` registry; API games list; `/games/:gameId` lobby works via API; board + `RulesPanel`; sample bots; protocol appendix; tests for engine + short `runMatch` |
 | Breaking protocol | Bump docs clearly; update all sample bots that break |
 
 Add tests that fail for the bug/feature before (or with) the fix. Prefer focused unit tests; use short `maxTicks` for subprocess `runMatch` tests.

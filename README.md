@@ -19,7 +19,15 @@ bun run dev
 - Web: http://localhost:5173
 - API: http://localhost:3001
 
-大厅先选游戏，再 **一键 Demo** 或勾选 Bot 开局。
+前端路由：
+
+| 路径 | 说明 |
+|------|------|
+| `/` | 游戏目录 |
+| `/games/:gameId` | 单游戏大厅（如 `/games/arena`、`/games/bomber`） |
+| `/matches/:matchId` | 对局回放（可刷新） |
+
+在大厅里 **一键 Demo** 或勾选 Bot 开局。生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。
 
 ## 仓库结构
 
