@@ -1,5 +1,5 @@
 {
-  "name": "@machia/protocol",
+  "name": "@machia/games-bomber",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,12 +9,14 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@machia/game-api": "workspace:*"
   },
   "devDependencies": {
+    "@types/bun": "latest",
     "typescript": "^5.9.2"
   }
 }

@@ -1,6 +1,6 @@
-import type { Direction, MatchReplay, PublicPlayerView, Rect } from "./api";
+import type { MatchReplay, Position, Rect } from "./api";
 
-const PLAYER_COLORS = [
+export const PLAYER_COLORS = [
   "#c45c26",
   "#2f6f8f",
   "#6b4c9a",
@@ -11,29 +11,30 @@ const PLAYER_COLORS = [
   "#5c4a3a",
 ];
 
-function facingAngle(facing: Direction): number {
-  switch (facing) {
-    case "UP":
-      return -90;
-    case "DOWN":
-      return 90;
-    case "LEFT":
-      return 180;
-    case "RIGHT":
-      return 0;
-  }
-}
-
 function cellIn(rect: Rect, x: number, y: number) {
   return x >= rect.minX && x <= rect.maxX && y >= rect.minY && y <= rect.maxY;
 }
 
-interface BoardProps {
+export function Board({
+  replay,
+  tickIndex,
+}: {
   replay: MatchReplay;
   tickIndex: number;
+}) {
+  if ((replay.gameId ?? "arena") === "bomber") {
+    return <BoardBomber replay={replay} tickIndex={tickIndex} />;
+  }
+  return <BoardArena replay={replay} tickIndex={tickIndex} />;
 }
 
-export function Board({ replay, tickIndex }: BoardProps) {
+function BoardArena({
+  replay,
+  tickIndex,
+}: {
+  replay: MatchReplay;
+  tickIndex: number;
+}) {
   const size = replay.mapSize;
   const mid = (size - 1) / 2;
   const core = {
@@ -42,20 +43,21 @@ export function Board({ replay, tickIndex }: BoardProps) {
     maxX: mid + 1,
     maxY: mid + 1,
   };
-
   const snap =
-    tickIndex < 0
-      ? null
-      : (replay.ticks[Math.min(tickIndex, replay.ticks.length - 1)] ?? null);
-
-  const players: PublicPlayerView[] = snap?.players ?? [];
+    replay.ticks[Math.min(Math.max(tickIndex, 0), replay.ticks.length - 1)];
+  const players = (snap?.players ?? []) as Array<{
+    id: number;
+    hp: number;
+    pos: Position;
+    facing: string;
+    alive: boolean;
+  }>;
   const safe = snap?.safe ?? {
     minX: 0,
     minY: 0,
     maxX: size - 1,
     maxY: size - 1,
   };
-
   const cellPx = Math.max(14, Math.min(28, Math.floor(560 / size)));
 
   return (
@@ -72,10 +74,8 @@ export function Board({ replay, tickIndex }: BoardProps) {
         const inSafe = cellIn(safe, x, y);
         const inCore = cellIn(core, x, y);
         const here = players.filter((p) => p.alive && p.pos.x === x && p.pos.y === y);
-
         let bg = inSafe ? "bg-[#dfe8d4]" : "bg-[#b8a090]";
         if (inCore && inSafe) bg = "bg-[#f0d78c]";
-
         return (
           <div
             key={`${x}-${y}`}
@@ -83,12 +83,22 @@ export function Board({ replay, tickIndex }: BoardProps) {
             style={{ width: cellPx, height: cellPx }}
           >
             {here.map((p) => (
-              <PlayerToken
+              <div
                 key={p.id}
-                player={p}
-                color={PLAYER_COLORS[p.id % PLAYER_COLORS.length]!}
-                size={cellPx}
-              />
+                className="absolute inset-0 flex items-center justify-center"
+              >
+                <div
+                  className="rounded-full border border-ink/30"
+                  style={{
+                    width: cellPx * 0.55,
+                    height: cellPx * 0.55,
+                    background: PLAYER_COLORS[p.id % PLAYER_COLORS.length],
+                  }}
+                />
+                <span className="absolute bottom-0 right-0 text-[9px] font-bold">
+                  {p.hp}
+                </span>
+              </div>
             ))}
           </div>
         );
@@ -97,40 +107,98 @@ export function Board({ replay, tickIndex }: BoardProps) {
   );
 }
 
-function PlayerToken({
-  player,
-  color,
-  size,
+function BoardBomber({
+  replay,
+  tickIndex,
 }: {
-  player: PublicPlayerView;
-  color: string;
-  size: number;
+  replay: MatchReplay;
+  tickIndex: number;
 }) {
-  const r = Math.max(5, size * 0.32);
+  const size = replay.mapSize;
+  const snap =
+    replay.ticks[Math.min(Math.max(tickIndex, 0), replay.ticks.length - 1)];
+  const tiles = (snap?.tiles as string[][] | undefined) ?? [];
+  const players = (snap?.players ?? []) as Array<{
+    id: number;
+    pos: Position;
+    alive: boolean;
+  }>;
+  const bombs = snap?.bombs ?? [];
+  const powerups = snap?.powerups ?? [];
+  const blast = new Set(
+    (snap?.blast ?? []).map((p) => `${p.x},${p.y}`),
+  );
+  const hazardRing = Number(snap?.hazardRing ?? 0);
+  const cellPx = Math.max(14, Math.min(32, Math.floor(560 / size)));
+
   return (
     <div
-      className="absolute inset-0 flex items-center justify-center"
-      title={`P${player.id} HP ${player.hp}`}
+      className="inline-grid gap-px rounded-sm bg-ink/30 p-px shadow-[0_20px_50px_-20px_rgba(26,31,22,0.45)]"
+      style={{
+        gridTemplateColumns: `repeat(${size}, ${cellPx}px)`,
+        gridTemplateRows: `repeat(${size}, ${cellPx}px)`,
+      }}
     >
-      <div
-        className="relative rounded-full border border-ink/30 shadow-sm transition-transform duration-200"
-        style={{
-          width: r * 2,
-          height: r * 2,
-          background: color,
-          transform: `rotate(${facingAngle(player.facing)}deg)`,
-        }}
-      >
-        <span
-          className="absolute right-[-1px] top-1/2 h-0 w-0 -translate-y-1/2 border-y-[3px] border-l-[5px] border-y-transparent border-l-ink/80"
-          aria-hidden
-        />
-      </div>
-      <span className="pointer-events-none absolute bottom-0 right-0 text-[9px] font-bold leading-none text-ink/80">
-        {player.hp}
-      </span>
+      {Array.from({ length: size * size }, (_, i) => {
+        const x = i % size;
+        const y = Math.floor(i / size);
+        const tile = tiles[y]?.[x] ?? "empty";
+        const key = `${x},${y}`;
+        const hazardous =
+          hazardRing > 0 &&
+          (x <= hazardRing ||
+            y <= hazardRing ||
+            x >= size - 1 - hazardRing ||
+            y >= size - 1 - hazardRing);
+        let bg = "bg-[#c8d6b8]";
+        if (tile === "hard") bg = "bg-[#4a5560]";
+        if (tile === "soft") bg = "bg-[#8b6914]";
+        if (hazardous && tile === "empty") bg = "bg-[#9aa88a]";
+        if (blast.has(key)) bg = "bg-[#e85d3a]";
+
+        const bomb = bombs.find((b) => b.pos.x === x && b.pos.y === y);
+        const power = powerups.find((p) => p.pos.x === x && p.pos.y === y);
+        const here = players.filter((p) => p.alive && p.pos.x === x && p.pos.y === y);
+
+        return (
+          <div
+            key={key}
+            className={`relative flex items-center justify-center ${bg}`}
+            style={{ width: cellPx, height: cellPx }}
+          >
+            {bomb && (
+              <span
+                className="absolute z-10 rounded-full bg-ink text-[8px] font-bold text-paper"
+                style={{
+                  width: cellPx * 0.45,
+                  height: cellPx * 0.45,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {bomb.fuse}
+              </span>
+            )}
+            {power && !bomb && (
+              <span className="absolute z-10 text-[10px] font-bold text-clay">
+                {power.kind === "FIRE_UP" ? "F" : "B"}
+              </span>
+            )}
+            {here.map((p) => (
+              <div
+                key={p.id}
+                className="absolute z-20 rounded-full border border-paper/50"
+                style={{
+                  width: cellPx * 0.5,
+                  height: cellPx * 0.5,
+                  background: PLAYER_COLORS[p.id % PLAYER_COLORS.length],
+                }}
+              />
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
-
-export { PLAYER_COLORS };

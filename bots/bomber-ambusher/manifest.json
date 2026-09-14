@@ -1,6 +1,6 @@
 {
-  "name": "Core Rusher",
+  "name": "Ambusher",
   "runtime": "node",
   "entry": "bot.js",
-  "games": ["arena"]
+  "games": ["bomber"]
 }

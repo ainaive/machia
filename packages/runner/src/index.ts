@@ -1,10 +1,6 @@
-import {
-  GameEngine,
-  type Action,
-  type GameResult,
-  type TickSnapshot,
-} from "@machia/engine";
+import type { GameResult, TickSnapshot } from "@machia/game-api";
 import type { BotManifest } from "@machia/protocol";
+import { getGame } from "./registry";
 import { SubprocessRunner } from "./subprocess";
 import type { BotHandle, BotRunner } from "./types";
 
@@ -16,6 +12,7 @@ export interface MatchPlayerSpec {
 
 export interface MatchReplay {
   id: string;
+  gameId: string;
   createdAt: string;
   mapSize: number;
   players: Array<{ playerId: number; botId: string; name: string }>;
@@ -26,19 +23,23 @@ export interface MatchReplay {
 
 export interface RunMatchOptions {
   id: string;
+  gameId: string;
   players: MatchPlayerSpec[];
   runner?: BotRunner;
   maxTicks?: number;
 }
 
 export async function runMatch(options: RunMatchOptions): Promise<MatchReplay> {
+  const plugin = getGame(options.gameId);
   const n = options.players.length;
-  if (n < 2 || n > 8) {
-    throw new Error("match requires 2..8 players");
+  if (n < plugin.minPlayers || n > plugin.maxPlayers) {
+    throw new Error(
+      `${plugin.name} requires ${plugin.minPlayers}..${plugin.maxPlayers} players`,
+    );
   }
 
   const runner = options.runner ?? new SubprocessRunner();
-  const engine = new GameEngine({
+  const game = plugin.create({
     playerCount: n,
     maxTicks: options.maxTicks,
   });
@@ -55,33 +56,35 @@ export async function runMatch(options: RunMatchOptions): Promise<MatchReplay> {
       });
       handles.push(handle);
       await handle.sendStart({
+        gameId: plugin.id,
         playerId: i,
-        mapSize: engine.mapSize,
         playerCount: n,
-        spawn: { ...engine.players[i]!.pos },
+        ...game.startInfo(i),
       });
     }
 
     const ticks: TickSnapshot[] = [];
-    while (!engine.finished) {
-      const submitted: Record<number, Action> = {};
+    while (!game.finished) {
+      const submitted: Record<number, unknown> = {};
       await Promise.all(
         handles.map(async (h) => {
-          if (!engine.players[h.playerId]?.alive) return;
-          const obs = engine.observationFor(h.playerId);
-          submitted[h.playerId] = await h.requestAction(obs);
+          if (!game.isAlive(h.playerId)) return;
+          const obs = game.observation(h.playerId);
+          const raw = await h.requestAction(obs);
+          submitted[h.playerId] = game.normalizeAction(raw);
         }),
       );
-      ticks.push(engine.step(submitted));
+      ticks.push(game.step(submitted));
     }
 
-    const gameResult = engine.results();
+    const gameResult = game.results();
     await Promise.all(handles.map((h) => h.sendEnd(gameResult.results)));
 
     return {
       id: options.id,
+      gameId: plugin.id,
       createdAt: new Date().toISOString(),
-      mapSize: engine.mapSize,
+      mapSize: game.mapSize,
       players: handles.map((h) => ({
         playerId: h.playerId,
         botId: h.botId,
@@ -98,3 +101,4 @@ export async function runMatch(options: RunMatchOptions): Promise<MatchReplay> {
 
 export * from "./types";
 export { SubprocessRunner } from "./subprocess";
+export { listGames, getGame } from "./registry";

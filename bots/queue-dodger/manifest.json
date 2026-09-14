@@ -1,5 +1,6 @@
 {
   "name": "Queue Dodger",
   "runtime": "node",
-  "entry": "bot.js"
+  "entry": "bot.js",
+  "games": ["arena"]
 }

@@ -16,54 +16,66 @@ bots/<bot-id>/
 {
   "name": "My Bot",
   "runtime": "node",
-  "entry": "bot.js"
+  "entry": "bot.js",
+  "games": ["arena"]
 }
 ```
 
-## Messages (server → bot)
+`games` lists which games this bot supports. Omitted → defaults to `["arena"]`.
+
+## Envelope (all games)
 
 ### `game_start`
 
 ```json
 {
   "type": "game_start",
+  "gameId": "arena",
   "playerId": 0,
-  "mapSize": 19,
   "playerCount": 4,
+  "mapSize": 19,
   "spawn": { "x": 9, "y": 0 }
 }
 ```
 
-Do not reply.
+Do not reply. Extra fields depend on the game.
 
 ### `observation`
 
-Sent every tick before actions for that tick resolve. Includes everyone’s queued actions for the current and next tick (public 2-tick delay).
-
-Reply with one line:
+Sent every tick. Shape depends on `gameId`. Reply with:
 
 ```json
-{ "action": "MOVE_UP" }
+{ "action": "..." }
 ```
 
-Valid actions: `MOVE_UP` `MOVE_DOWN` `MOVE_LEFT` `MOVE_RIGHT` `ATTACK` `BLOCK` `WAIT`.
-
-Timeout (default 100ms) or invalid JSON → treated as `WAIT`.
+Timeout (100ms) or invalid JSON → game default (`WAIT`).
 
 ### `game_end`
 
 ```json
 {
   "type": "game_end",
-  "results": [ { "playerId": 0, "score": 12.5, "rank": 1, "...": "..." } ]
+  "results": [{ "playerId": 0, "score": 12.5, "rank": 1 }]
 }
 ```
 
-Do not reply. Process will be terminated.
+Do not reply.
 
-## Rules summary
+---
 
-- Action submitted on tick T executes on tick T+2.
-- Queues are public in every observation.
-- Opening two queue slots are prefilled with `WAIT`.
-- See arena rules in the product plan / engine tests for movement, attack, shrink, and scoring.
+## Arena
+
+Actions: `MOVE_UP` `MOVE_DOWN` `MOVE_LEFT` `MOVE_RIGHT` `ATTACK` `BLOCK` `WAIT`
+
+- Action submitted on tick T executes on T+2; queues are public in every observation.
+- Opening two queue slots are `WAIT`.
+- Observation includes `players[].queue`, `core`, `safe`, HP, facing.
+
+## Bomber
+
+Actions: `MOVE_UP` `MOVE_DOWN` `MOVE_LEFT` `MOVE_RIGHT` `PLACE_BOMB` `WAIT`
+
+- Actions apply **immediately** (no 2-tick delay).
+- Bombs fuse for 4 ticks (countdown starts the placement tick), then explode in a cross; soft walls break; hard walls block.
+- Observation includes `tiles`, `bombs` (with `fuse`), `powerups`, player `power` / `bombsLeft`, plus `hazardRing` / `duelTicks` in 1v1 overtime.
+- When exactly two players remain: every 18 duel ticks the hazard ring grows (outer empty cells become lethal); duel ends by ~90 ticks if still tied.

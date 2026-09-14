@@ -1,11 +1,13 @@
 # Machia
 
-AI Bot 对战演示平台：从本地 `bots/` 加载 Node Bot，沙箱撮合对局，前端慢速回放。
+AI Bot 多游戏对战演示平台：从本地 `bots/` 加载 Node Bot，沙箱撮合，前端回放。
+
+当前游戏：**Arena**（两拍延迟缩圈）· **Bomber**（炸弹人）。
 
 ## 要求
 
 - [Bun](https://bun.sh) ≥ 1.4
-- Node.js（用于启动 Bot 子进程）
+- Node.js（启动 Bot 子进程）
 
 ## 启动
 
@@ -14,21 +16,23 @@ bun install
 bun run dev
 ```
 
-- Web: http://localhost:5173  
-- API: http://localhost:3001  
+- Web: http://localhost:5173
+- API: http://localhost:3001
 
-大厅可 **一键 Demo**（4 个样例 Bot，0.5x 自动回放），或勾选 2–8 个 Bot 开局。
+大厅先选游戏，再 **一键 Demo** 或勾选 Bot 开局。
 
 ## 仓库结构
 
 ```text
-apps/web          Vite + React + Tailwind 回放 UI
-apps/server       Bun + Hono 撮合 API
-packages/engine   纯规则引擎
-packages/protocol Bot 协议类型
-packages/runner   子进程 Runner + 对局编排
-bots/             样例 Bot（文件夹加载）
-docs/             协议说明
+apps/web              Vite + React 回放 UI
+apps/server           Bun + Hono API
+packages/game-api     GamePlugin 接口
+packages/engine       Arena 规则 + 插件
+packages/games-bomber Bomber 规则 + 插件
+packages/protocol     Bot 信封类型
+packages/runner       子进程 Runner + 游戏注册表
+bots/                 样例 Bot（manifest.games 声明兼容游戏）
+docs/                 协议说明
 ```
 
 ## 测试
@@ -39,4 +43,4 @@ bun test
 
 ## 添加 Bot
 
-见 [docs/bot-protocol.md](docs/bot-protocol.md)。把目录放到 `bots/<id>/` 后刷新大厅即可。
+见 [docs/bot-protocol.md](docs/bot-protocol.md)。

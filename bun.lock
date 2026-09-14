@@ -39,6 +39,27 @@
     "packages/engine": {
       "name": "@machia/engine",
       "version": "0.1.0",
+      "dependencies": {
+        "@machia/game-api": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.9.2",
+      },
+    },
+    "packages/game-api": {
+      "name": "@machia/game-api",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "^5.9.2",
+      },
+    },
+    "packages/games-bomber": {
+      "name": "@machia/games-bomber",
+      "version": "0.1.0",
+      "dependencies": {
+        "@machia/game-api": "workspace:*",
+      },
       "devDependencies": {
         "@types/bun": "latest",
         "typescript": "^5.9.2",
@@ -48,7 +69,7 @@
       "name": "@machia/protocol",
       "version": "0.1.0",
       "dependencies": {
-        "@machia/engine": "workspace:*",
+        "@machia/game-api": "workspace:*",
       },
       "devDependencies": {
         "typescript": "^5.9.2",
@@ -59,6 +80,8 @@
       "version": "0.1.0",
       "dependencies": {
         "@machia/engine": "workspace:*",
+        "@machia/game-api": "workspace:*",
+        "@machia/games-bomber": "workspace:*",
         "@machia/protocol": "workspace:*",
       },
       "devDependencies": {
@@ -169,6 +192,10 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@machia/engine": ["@machia/engine@workspace:packages/engine"],
+
+    "@machia/game-api": ["@machia/game-api@workspace:packages/game-api"],
+
+    "@machia/games-bomber": ["@machia/games-bomber@workspace:packages/games-bomber"],
 
     "@machia/protocol": ["@machia/protocol@workspace:packages/protocol"],
 

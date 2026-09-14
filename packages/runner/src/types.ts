@@ -1,17 +1,13 @@
-import type { Action, GameObservation, PlayerResult, Position } from "@machia/engine";
+import type { PlayerResult } from "@machia/game-api";
 import type { BotManifest } from "@machia/protocol";
 
 export interface BotHandle {
   playerId: number;
   botId: string;
   name: string;
-  sendStart(info: {
-    playerId: number;
-    mapSize: number;
-    playerCount: number;
-    spawn: Position;
-  }): Promise<void>;
-  requestAction(obs: GameObservation): Promise<Action>;
+  sendStart(info: Record<string, unknown>): Promise<void>;
+  /** Returns raw bot reply (object or action string); caller normalizes via game plugin */
+  requestAction(obs: unknown): Promise<unknown>;
   sendEnd(results: PlayerResult[]): Promise<void>;
   destroy(): Promise<void>;
 }
@@ -25,5 +21,4 @@ export interface BotRunner {
   }): Promise<BotHandle>;
 }
 
-/** Placeholder for future Docker isolation. */
 export type RunnerKind = "subprocess" | "docker";

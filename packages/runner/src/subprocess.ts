@@ -1,11 +1,10 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
-import { normalizeAction, type Action, type GameObservation, type PlayerResult, type Position } from "@machia/engine";
+import type { PlayerResult } from "@machia/game-api";
 import {
   DEFAULT_BOT_TIMEOUT_MS,
   type BotManifest,
-  type BotMessage,
   type ServerMessage,
 } from "@machia/protocol";
 import type { BotHandle, BotRunner } from "./types";
@@ -39,29 +38,17 @@ class SubprocessBotHandle implements BotHandle {
     this.lines = new AsyncLineQueue(args.child);
   }
 
-  async sendStart(info: {
-    playerId: number;
-    mapSize: number;
-    playerCount: number;
-    spawn: Position;
-  }): Promise<void> {
-    this.write({
-      type: "game_start",
-      playerId: info.playerId,
-      mapSize: info.mapSize,
-      playerCount: info.playerCount,
-      spawn: info.spawn,
-    });
+  async sendStart(info: Record<string, unknown>): Promise<void> {
+    this.write({ type: "game_start", ...info });
   }
 
-  async requestAction(obs: GameObservation): Promise<Action> {
-    this.write({ type: "observation", ...obs });
+  async requestAction(obs: unknown): Promise<unknown> {
+    this.write({ type: "observation", ...(obs as object) });
     try {
       const line = await this.lines.next(this.timeoutMs);
-      const parsed = JSON.parse(line) as BotMessage | Action;
-      return normalizeAction(parsed);
+      return JSON.parse(line);
     } catch {
-      return "WAIT";
+      return null;
     }
   }
 

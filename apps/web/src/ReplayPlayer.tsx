@@ -117,15 +117,36 @@ export function ReplayPlayer({
         </button>
 
         <p className="rounded-sm border border-ink/10 bg-paper/50 px-3 py-2 text-xs leading-relaxed text-ink/65">
-          提示：动作有 <strong className="text-ink">2 拍延迟</strong>
-          ，侧栏「执行」是本拍真正生效的动作；棋盘上角色可能看起来在「提前排队」。黄色为核心区，深色为缩圈外。
+          {(replay.gameId ?? "arena") === "bomber" ? (
+            <>
+              <strong className="text-ink">Bomber</strong>
+              ：深灰硬墙、棕软墙、黑圆为炸弹（数字是引信）、橙红为爆炸、F/B
+              为道具。
+            </>
+          ) : (
+            <>
+              提示：Arena 动作有 <strong className="text-ink">2 拍延迟</strong>
+              。黄色为核心区，深色为缩圈外。
+            </>
+          )}
         </p>
 
         <div>
           <h2 className="font-display text-lg font-bold">本局选手</h2>
           <ul className="mt-2 space-y-2">
             {replay.players.map((p) => {
-              const view = snap?.players.find((x) => x.id === p.playerId);
+              const view = snap?.players.find(
+                (x) => (x as { id: number }).id === p.playerId,
+              ) as
+                | {
+                    id: number;
+                    alive?: boolean;
+                    hp?: number;
+                    facing?: string;
+                    power?: number;
+                    bombsMax?: number;
+                  }
+                | undefined;
               const result = replay.results.find((r) => r.playerId === p.playerId);
               return (
                 <li
@@ -142,8 +163,10 @@ export function ReplayPlayer({
                     <div className="font-medium">{p.name}</div>
                     <div className="text-ink/60">
                       {view?.alive === false
-                        ? `阵亡 @${view ? replay.results.find((r) => r.playerId === p.playerId)?.deathTick : "?"}`
-                        : `HP ${view?.hp ?? "-"} · ${view?.facing ?? ""}`}
+                        ? `阵亡 @${result?.deathTick ?? "?"}`
+                        : (replay.gameId ?? "arena") === "bomber"
+                          ? `火力 ${view?.power ?? "-"} · 弹 ${view?.bombsMax ?? "-"}`
+                          : `HP ${view?.hp ?? "-"} · ${view?.facing ?? ""}`}
                       {snap?.executed[p.playerId]
                         ? ` · 执行 ${snap.executed[p.playerId]}`
                         : ""}
@@ -174,7 +197,10 @@ export function ReplayPlayer({
                       #{r.rank} {p?.name} — {r.score.toFixed(2)}
                       <span className="text-ink/50">
                         {" "}
-                        (core {r.coreTicks}, kills {r.kills}, surv {r.survivalTicks})
+                        (kills {r.kills}
+                        {r.coreTicks != null ? `, core ${r.coreTicks}` : ""}
+                        {r.wallsBroken != null ? `, walls ${r.wallsBroken}` : ""}
+                        , surv {r.survivalTicks})
                       </span>
                     </li>
                   );

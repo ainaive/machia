@@ -1,40 +1,56 @@
-const RULES = [
+const ARENA_RULES = [
   {
     title: "目标",
     body: "在方形棋盘上存活并占据中心 3×3 核心区。缩圈会不断挤压安全区，出局看综合得分。",
   },
   {
     title: "两拍延迟（核心机制）",
-    body: "第 T 拍提交的动作，要到第 T+2 拍才执行。已排队的两拍动作对所有人公开，因此决策时「当前拍 + 下一拍」全局已知，只有再下一拍是同时秘密选择。",
+    body: "第 T 拍提交的动作，要到第 T+2 拍才执行。已排队的两拍动作对所有人公开。",
   },
   {
     title: "动作",
-    body: "移动上下左右、攻击、格挡、等待。移动成功会更新朝向；攻击打向当前朝向前 1～2 格；本拍格挡可免疫攻击。",
+    body: "移动、攻击、格挡、等待。攻击打向朝向前 1～2 格；本拍格挡免疫攻击。",
   },
   {
-    title: "结算顺序",
-    body: "先同时结算移动（撞墙、抢同一格、互换位置都会失败）→ 再同时结算攻击 → 圈外掉血 → 核心区计分 → 判定死亡。",
-  },
-  {
-    title: "缩圈与结束",
-    body: "每 60 拍四边各收 1 格，最小收到刚好罩住核心区。存活 ≤1 人或满 400 拍结束。",
-  },
-  {
-    title: "计分",
-    body: "得分 = 3×核心停留拍 + 10×击杀 + 0.05×存活拍。同分比谁死得更晚。",
+    title: "缩圈与计分",
+    body: "每 60 拍缩圈。得分 = 3×核心停留 + 10×击杀 + 0.05×存活拍。",
   },
 ] as const;
 
-export function RulesPanel() {
+const BOMBER_RULES = [
+  {
+    title: "目标",
+    body: "在砖墙迷宫里用炸弹淘汰对手。存活到最后，或靠击杀与拆墙拿高分。",
+  },
+  {
+    title: "即时动作",
+    body: "移动、放炸弹、等待——本拍提交本拍生效（没有 Arena 的两拍延迟）。",
+  },
+  {
+    title: "炸弹与连锁",
+    body: "炸弹约 3 拍后十字爆炸（含放置拍倒计时）；火力初始 1。炸到未爆弹会连锁。软墙可毁，硬墙永久。",
+  },
+  {
+    title: "道具与计分",
+    body: "拆墙可能掉火力/弹数。得分 = 50×击杀 + 5×拆墙 + 0.1×存活拍。",
+  },
+  {
+    title: "残局缩圈",
+    body: "只剩两人时进入加时：约每 18 拍外圈变致死区，最多约 90 拍决出胜负，避免无限拉扯。",
+  },
+] as const;
+
+export function RulesPanel({ gameId }: { gameId: string }) {
+  const rules = gameId === "bomber" ? BOMBER_RULES : ARENA_RULES;
   return (
     <section className="mt-12 border-t border-ink/10 pt-8">
       <h2 className="font-display text-2xl font-bold">游戏规则</h2>
       <p className="mt-2 max-w-2xl text-sm text-ink/65">
-        Machia 是给 AI / 程序员对战的回合制竞技场。Bot
-        每拍根据公开局面选一个动作；平台在沙箱里跑完整局后再回放。
+        Machia 是多游戏 AI 对战平台。Bot 通过 stdin/stdout
+        按拍决策；不同游戏有各自的签名机制。
       </p>
       <dl className="mt-6 grid gap-5 sm:grid-cols-2">
-        {RULES.map((rule) => (
+        {rules.map((rule) => (
           <div key={rule.title} className="border-l-2 border-moss/40 pl-3">
             <dt className="font-display text-sm font-bold tracking-wide text-moss">
               {rule.title}

@@ -1,5 +1,5 @@
 {
-  "name": "@machia/protocol",
+  "name": "@machia/game-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,9 +10,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@machia/game-api": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.2"
