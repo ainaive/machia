@@ -137,6 +137,12 @@ export const DEMO_BOTS: Record<string, string[]> = {
     "sokoban-sprint",
   ],
   holdem: ["holdem-tight", "holdem-loose", "holdem-maniac", "holdem-rock"],
+  quoridor: [
+    "quoridor-rush",
+    "quoridor-blocker",
+    "quoridor-balanced",
+    "quoridor-sprinter",
+  ],
 };
 
 export async function startDemoMatch(gameId = "arena"): Promise<MatchReplay> {

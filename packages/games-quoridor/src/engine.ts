@@ -56,10 +56,6 @@ function inBounds(p: Position, size: number) {
   return p.x >= 0 && p.y >= 0 && p.x < size && p.y < size;
 }
 
-function wallKey(w: Wall) {
-  return `${w.orient}:${w.x},${w.y}`;
-}
-
 function fencesForPlayers(n: number): number {
   if (n === 2) return 8;
   if (n === 3) return 6;
