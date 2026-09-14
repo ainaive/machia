@@ -1,5 +1,5 @@
 {
-  "name": "@machia/runner",
+  "name": "@machia/games-tanks",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,11 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@machia/engine": "workspace:*",
-    "@machia/game-api": "workspace:*",
-    "@machia/games-bomber": "workspace:*",
-    "@machia/games-tanks": "workspace:*",
-    "@machia/protocol": "workspace:*"
+    "@machia/game-api": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

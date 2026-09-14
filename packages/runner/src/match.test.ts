@@ -32,6 +32,20 @@ function bomberPlayer(id: string) {
   };
 }
 
+function tanksPlayer(id: string) {
+  const botDir = path.join(botsRoot, id);
+  return {
+    botId: id,
+    botDir,
+    manifest: {
+      name: id,
+      runtime: "node" as const,
+      entry: "bot.js",
+      games: ["tanks"],
+    },
+  };
+}
+
 describe("runMatch arena", () => {
   test("completes a short 2-player match", async () => {
     const replay = await runMatch({
@@ -76,4 +90,22 @@ describe("runMatch bomber", () => {
       }),
     ).rejects.toThrow(/requires/);
   });
+});
+
+describe("runMatch tanks", () => {
+  test("completes a short 2-player match", async () => {
+    const replay = await runMatch({
+      id: "test-match-tanks",
+      gameId: "tanks",
+      maxTicks: 30,
+      players: [tanksPlayer("tanks-hunter"), tanksPlayer("tanks-turtle")],
+    });
+
+    expect(replay.gameId).toBe("tanks");
+    expect(replay.ticks.length).toBeGreaterThan(0);
+    expect(replay.ticks.length).toBeLessThanOrEqual(30);
+    expect(replay.results).toHaveLength(2);
+    expect(replay.mapSize).toBe(13);
+    expect(replay.ticks[0]?.bullets).toBeDefined();
+  }, 20_000);
 });

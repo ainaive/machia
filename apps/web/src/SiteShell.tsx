@@ -9,7 +9,7 @@ export function SiteShell({
 }: {
   children: ReactNode;
   subtitle?: string;
-  accent?: "arena" | "bomber";
+  accent?: "arena" | "bomber" | "tanks";
 }) {
   return (
     <div className="mx-auto flex min-h-full max-w-6xl flex-col px-4 py-8 sm:px-6">

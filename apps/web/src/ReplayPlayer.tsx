@@ -35,6 +35,7 @@ export function ReplayPlayer({
   const max = Math.max(0, replay.ticks.length - 1);
   const snap = replay.ticks[index];
   const isBomber = (replay.gameId ?? "arena") === "bomber";
+  const isTanks = (replay.gameId ?? "arena") === "tanks";
   const progress = max > 0 ? index / max : 0;
 
   useEffect(() => {
@@ -158,11 +159,16 @@ export function ReplayPlayer({
           <div className="flex items-center gap-2 border-b border-ink/10 bg-moss/10 px-3 py-2">
             <Swords size={16} className="text-moss" />
             <span className="font-display text-sm font-bold">
-              {isBomber ? "Bomber" : "Arena"}
+              {isTanks ? "Tanks" : isBomber ? "Bomber" : "Arena"}
             </span>
           </div>
           <p className="px-3 py-2.5 text-xs leading-relaxed text-ink/65">
-            {isBomber ? (
+            {isTanks ? (
+              <>
+                炮管指向朝向。金黄圆点为子弹。MOVE 会转向并前进；FIRE
+                射击；硬墙挡弹也挡车。
+              </>
+            ) : isBomber ? (
               <>
                 石墙永久、砖墙可炸。炸弹引信跳动，橙星为爆炸。菱形道具：火焰=
                 火力，炸弹=弹数。残局外圈会变致死区。
@@ -209,7 +215,9 @@ export function ReplayPlayer({
                     color={playerColor(p.playerId)}
                     size={36}
                     facing={view?.facing ?? "DOWN"}
-                    accent={isBomber ? "bomber" : "arena"}
+                    accent={
+                      isTanks ? "tanks" : isBomber ? "bomber" : "arena"
+                    }
                     dim={!alive}
                   />
                   <div className="min-w-0 flex-1">
@@ -217,7 +225,9 @@ export function ReplayPlayer({
                     <div className="truncate text-xs text-ink/55">
                       {!alive
                         ? `阵亡 @${result?.deathTick ?? "?"}`
-                        : isBomber
+                        : isTanks
+                          ? `朝向 ${view?.facing ?? "-"}`
+                          : isBomber
                           ? `火力 ${view?.power ?? "-"} · 弹上限 ${view?.bombsMax ?? "-"}`
                           : `HP ${view?.hp ?? "-"} · ${view?.facing ?? ""}`}
                       {snap?.executed[p.playerId]

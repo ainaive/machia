@@ -29,7 +29,7 @@ interface TokenProps {
   size: number;
   facing?: string;
   label?: string | number;
-  accent?: "arena" | "bomber";
+  accent?: "arena" | "bomber" | "tanks";
   dim?: boolean;
 }
 
@@ -43,7 +43,8 @@ export function RobotToken({
   dim = false,
 }: TokenProps) {
   const rot = FACING_ROT[facing] ?? 180;
-  const eye = accent === "bomber" ? "#ffb347" : "#7dffb3";
+  const eye =
+    accent === "bomber" ? "#ffb347" : accent === "tanks" ? "#9ad0ff" : "#7dffb3";
 
   return (
     <div
@@ -263,6 +264,88 @@ export function BlastBurst({ size }: { size: number }) {
           />
         ))}
         <circle cx="20" cy="20" r="6" fill="#fff3c4" />
+      </svg>
+    </div>
+  );
+}
+
+const TANK_ROT: Record<string, number> = {
+  UP: 0,
+  RIGHT: 90,
+  DOWN: 180,
+  LEFT: 270,
+};
+
+export function TankSprite({
+  color,
+  size,
+  facing = "DOWN",
+}: {
+  color: string;
+  size: number;
+  facing?: string;
+}) {
+  const rot = TANK_ROT[facing] ?? 180;
+  return (
+    <div
+      className="pointer-events-none relative flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      <svg
+        viewBox="0 0 48 48"
+        width={size}
+        height={size}
+        className="drop-shadow-[0_2px_3px_rgba(0,0,0,0.4)]"
+        aria-hidden
+      >
+        <ellipse cx="24" cy="42" rx="11" ry="3" fill="rgba(0,0,0,0.3)" />
+        <g transform={`rotate(${rot} 24 24)`}>
+          <rect
+            x="8"
+            y="16"
+            width="32"
+            height="18"
+            rx="4"
+            fill={color}
+            stroke="#1a1f16"
+            strokeWidth="1.6"
+          />
+          <rect
+            x="11"
+            y="19"
+            width="26"
+            height="6"
+            rx="2"
+            fill="rgba(0,0,0,0.25)"
+          />
+          <rect
+            x="20"
+            y="6"
+            width="8"
+            height="16"
+            rx="2"
+            fill="#2a3328"
+            stroke="#1a1f16"
+            strokeWidth="1.2"
+          />
+          <rect x="22" y="2" width="4" height="8" rx="1" fill="#c8d0c4" />
+          <circle cx="24" cy="25" r="5" fill="#1a1f16" />
+          <circle cx="24" cy="25" r="2.5" fill="#9ad0ff" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+export function BulletSprite({ size }: { size: number }) {
+  return (
+    <div
+      className="pointer-events-none flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      <svg viewBox="0 0 24 24" width={size * 0.55} height={size * 0.55} aria-hidden>
+        <circle cx="12" cy="12" r="5" fill="#e8b84a" stroke="#1a1f16" strokeWidth="1.2" />
+        <circle cx="12" cy="12" r="2" fill="#fff3c4" />
       </svg>
     </div>
   );

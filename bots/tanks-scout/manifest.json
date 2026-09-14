@@ -1,0 +1,6 @@
+{
+  "name": "Tank Scout",
+  "runtime": "node",
+  "entry": "bot.js",
+  "games": ["tanks"]
+}
