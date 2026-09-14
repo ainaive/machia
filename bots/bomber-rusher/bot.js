@@ -2,10 +2,9 @@
 "use strict";
 
 const readline = require("node:readline");
-const { decideHunter } = require("../bomber-lib.js");
+const { decide } = require("../bomber-lib.js");
 
 const rl = readline.createInterface({ input: process.stdin });
-
 rl.on("line", (line) => {
   let msg;
   try {
@@ -14,13 +13,12 @@ rl.on("line", (line) => {
     return;
   }
   if (msg.type !== "observation") return;
-
   const self = msg.players.find((p) => p.id === msg.selfId);
   if (!self || !self.alive) {
     process.stdout.write(JSON.stringify({ action: "WAIT" }) + "\n");
     return;
   }
-
-  const action = decideHunter(msg, self);
-  process.stdout.write(JSON.stringify({ action }) + "\n");
+  process.stdout.write(
+    JSON.stringify({ action: decide(msg, self, "hunter") }) + "\n",
+  );
 });
