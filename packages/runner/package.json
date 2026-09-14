@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@machia/engine": "workspace:*",
+    "@machia/game-api": "workspace:*",
+    "@machia/games-bomber": "workspace:*",
     "@machia/protocol": "workspace:*"
   },
   "devDependencies": {
