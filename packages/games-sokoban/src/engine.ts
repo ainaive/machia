@@ -28,15 +28,14 @@ export interface LevelData {
   boxes: Position[];
 }
 
-/** Compact race level — solvable in few pushes. */
+/** Compact race level — one box, short path (demo-friendly). */
 export const DEFAULT_LEVEL_ROWS = [
-  "########",
-  "#      #",
+  "#######",
+  "#     #",
   "# @$  #",
-  "#  .$ #",
   "#  .  #",
-  "#      #",
-  "########",
+  "#     #",
+  "#######",
 ] as const;
 
 const MOVE_DELTA: Record<string, Position> = {
