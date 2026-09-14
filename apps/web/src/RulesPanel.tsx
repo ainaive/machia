@@ -78,12 +78,32 @@ const SOKOBAN_RULES = [
   },
 ] as const;
 
+const HOLDEM_RULES = [
+  {
+    title: "目标",
+    body: "一局一手德州扑克。用底牌 + 公共牌组成最大五张牌型，赢得底池。最终按剩余筹码排名。",
+  },
+  {
+    title: "流程",
+    body: "发底牌 → 翻前下注 → 翻牌三张 → 转牌 → 河牌 → 摊牌。每人轮到时行动（顺序下注，不是同时）。",
+  },
+  {
+    title: "动作",
+    body: "FOLD / CHECK / CALL / RAISE（固定加注额）。非法或 WAIT 会自动 CHECK/CALL/FOLD。",
+  },
+  {
+    title: "盲注",
+    body: "起始筹码 100；小盲 1 / 大盲 2。",
+  },
+] as const;
+
 const RULES_BY_GAME: Record<string, readonly { title: string; body: string }[]> =
   {
     arena: ARENA_RULES,
     bomber: BOMBER_RULES,
     tanks: TANKS_RULES,
     sokoban: SOKOBAN_RULES,
+    holdem: HOLDEM_RULES,
   };
 
 export function RulesPanel({ gameId }: { gameId: string }) {

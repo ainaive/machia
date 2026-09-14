@@ -39,6 +39,7 @@ export function ReplayPlayer({
   const isBomber = gameId === "bomber";
   const isTanks = gameId === "tanks";
   const isSokoban = gameId === "sokoban";
+  const isHoldem = gameId === "holdem";
   const progress = max > 0 ? index / max : 0;
 
   useEffect(() => {
@@ -162,17 +163,23 @@ export function ReplayPlayer({
           <div className="flex items-center gap-2 border-b border-ink/10 bg-moss/10 px-3 py-2">
             <Swords size={16} className="text-moss" />
             <span className="font-display text-sm font-bold">
-              {isSokoban
-                ? "Sokoban"
-                : isTanks
-                  ? "Tanks"
-                  : isBomber
-                    ? "Bomber"
-                    : "Arena"}
+              {isHoldem
+                ? "Hold'em"
+                : isSokoban
+                  ? "Sokoban"
+                  : isTanks
+                    ? "Tanks"
+                    : isBomber
+                      ? "Bomber"
+                      : "Arena"}
             </span>
           </div>
           <p className="px-3 py-2.5 text-xs leading-relaxed text-ink/65">
-            {isSokoban ? (
+            {isHoldem ? (
+              <>
+                牌桌中央是公共牌与底池。高亮座位表示当前行动者。回放以旁观者视角展示底牌。
+              </>
+            ) : isSokoban ? (
               <>
                 每人一张独立盘面。金格为目标点，木箱推进去会变深色。比谁更快推完。
               </>
@@ -236,7 +243,9 @@ export function ReplayPlayer({
                     <div className="truncate text-xs text-ink/55">
                       {!alive && !isSokoban
                         ? `阵亡 @${result?.deathTick ?? "?"}`
-                        : isSokoban
+                        : isHoldem
+                          ? `栈 ${(view as { stack?: number }).stack ?? "-"} · 注 ${(view as { bet?: number }).bet ?? 0}${(view as { folded?: boolean }).folded ? " · 弃牌" : ""}`
+                          : isSokoban
                           ? view &&
                             (view as { done?: boolean }).done
                             ? `完成 · ${(view as { steps?: number }).steps ?? "-"} 步`

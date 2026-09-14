@@ -6,7 +6,7 @@
     "dev": "bun run scripts/dev.ts",
     "dev:server": "bun run --filter @machia/server dev",
     "dev:web": "bun run --filter @machia/web dev",
-    "test": "bun test packages/engine packages/games-bomber packages/games-tanks packages/games-sokoban packages/runner apps/server",
+    "test": "bun test packages/engine packages/games-bomber packages/games-tanks packages/games-sokoban packages/games-holdem packages/runner apps/server",
     "typecheck": "bun run --filter '*' typecheck",
     "build:web": "bun run --filter @machia/web build",
     "check": "bun run typecheck && bun test && bun run build:web"

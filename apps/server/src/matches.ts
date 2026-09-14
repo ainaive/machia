@@ -136,6 +136,7 @@ export const DEMO_BOTS: Record<string, string[]> = {
     "sokoban-planner",
     "sokoban-sprint",
   ],
+  holdem: ["holdem-tight", "holdem-loose", "holdem-maniac", "holdem-rock"],
 };
 
 export async function startDemoMatch(gameId = "arena"): Promise<MatchReplay> {
