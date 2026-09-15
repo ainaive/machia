@@ -5,7 +5,14 @@ describe("game registry", () => {
   test("lists registered games", () => {
     const games = listGames();
     const ids = games.map((g) => g.id).sort();
-    expect(ids).toEqual(["arena", "bomber", "holdem", "sokoban", "tanks"]);
+    expect(ids).toEqual([
+      "arena",
+      "bomber",
+      "holdem",
+      "quoridor",
+      "sokoban",
+      "tanks",
+    ]);
     for (const g of games) {
       expect(g.minPlayers).toBeGreaterThanOrEqual(2);
       expect(g.maxPlayers).toBeGreaterThanOrEqual(g.minPlayers);
@@ -19,6 +26,7 @@ describe("game registry", () => {
     expect(getGame("tanks").id).toBe("tanks");
     expect(getGame("sokoban").id).toBe("sokoban");
     expect(getGame("holdem").id).toBe("holdem");
+    expect(getGame("quoridor").id).toBe("quoridor");
   });
 
   test("getGame rejects unknown id", () => {

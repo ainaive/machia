@@ -175,3 +175,37 @@ describe("runMatch holdem", () => {
     expect(stacks).toBe(200);
   }, 25_000);
 });
+
+function quoridorPlayer(id: string) {
+  const botDir = path.join(botsRoot, id);
+  return {
+    botId: id,
+    botDir,
+    manifest: {
+      name: id,
+      runtime: "node" as const,
+      entry: "bot.js",
+      games: ["quoridor"],
+    },
+  };
+}
+
+describe("runMatch quoridor", () => {
+  test("completes a short heads-up race", async () => {
+    const replay = await runMatch({
+      id: "test-match-quoridor",
+      gameId: "quoridor",
+      maxTicks: 80,
+      players: [
+        quoridorPlayer("quoridor-rush"),
+        quoridorPlayer("quoridor-blocker"),
+      ],
+    });
+
+    expect(replay.gameId).toBe("quoridor");
+    expect(replay.ticks.length).toBeGreaterThan(0);
+    expect(replay.results).toHaveLength(2);
+    expect(replay.ticks[0]?.walls).toBeDefined();
+    expect(replay.mapSize).toBe(7);
+  }, 25_000);
+});

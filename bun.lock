@@ -79,6 +79,17 @@
         "typescript": "^5.9.2",
       },
     },
+    "packages/games-quoridor": {
+      "name": "@machia/games-quoridor",
+      "version": "0.1.0",
+      "dependencies": {
+        "@machia/game-api": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.9.2",
+      },
+    },
     "packages/games-sokoban": {
       "name": "@machia/games-sokoban",
       "version": "0.1.0",
@@ -119,6 +130,7 @@
         "@machia/game-api": "workspace:*",
         "@machia/games-bomber": "workspace:*",
         "@machia/games-holdem": "workspace:*",
+        "@machia/games-quoridor": "workspace:*",
         "@machia/games-sokoban": "workspace:*",
         "@machia/games-tanks": "workspace:*",
         "@machia/protocol": "workspace:*",
@@ -237,6 +249,8 @@
     "@machia/games-bomber": ["@machia/games-bomber@workspace:packages/games-bomber"],
 
     "@machia/games-holdem": ["@machia/games-holdem@workspace:packages/games-holdem"],
+
+    "@machia/games-quoridor": ["@machia/games-quoridor@workspace:packages/games-quoridor"],
 
     "@machia/games-sokoban": ["@machia/games-sokoban@workspace:packages/games-sokoban"],
 
