@@ -5,6 +5,7 @@ import {
   getGame,
   listGames,
   runMatch,
+  type MatchPlayerSpec,
   type MatchReplay,
 } from "@machia/runner";
 
@@ -84,33 +85,25 @@ function newMatchId(): string {
   return `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export async function startMatch(
+export async function runPlayersMatch(
   gameId: string,
-  botIds: string[],
+  players: MatchPlayerSpec[],
+  options?: { maxTicks?: number },
 ): Promise<MatchReplay> {
   const plugin = getGame(gameId);
-  if (botIds.length < plugin.minPlayers || botIds.length > plugin.maxPlayers) {
+  if (players.length < plugin.minPlayers || players.length > plugin.maxPlayers) {
     throw new Error(
       `Select ${plugin.minPlayers} to ${plugin.maxPlayers} bots for ${plugin.name}`,
     );
   }
   return withMatchLock(async () => {
-    const players = [];
-    for (const id of botIds) {
-      const bot = await loadBot(id, gameId);
-      players.push({
-        botId: bot.id,
-        botDir: bot.dir,
-        manifest: {
-          name: bot.name,
-          runtime: "node" as const,
-          entry: bot.entry,
-          games: bot.games,
-        },
-      });
-    }
     const id = newMatchId();
-    const replay = await runMatch({ id, gameId, players });
+    const replay = await runMatch({
+      id,
+      gameId,
+      players,
+      maxTicks: options?.maxTicks,
+    });
     await mkdir(REPLAYS_DIR, { recursive: true });
     await writeFile(
       path.join(REPLAYS_DIR, `${id}.json`),
@@ -119,6 +112,27 @@ export async function startMatch(
     );
     return replay;
   });
+}
+
+export async function startMatch(
+  gameId: string,
+  botIds: string[],
+): Promise<MatchReplay> {
+  const players: MatchPlayerSpec[] = [];
+  for (const id of botIds) {
+    const bot = await loadBot(id, gameId);
+    players.push({
+      botId: bot.id,
+      botDir: bot.dir,
+      manifest: {
+        name: bot.name,
+        runtime: "node" as const,
+        entry: bot.entry,
+        games: bot.games,
+      },
+    });
+  }
+  return runPlayersMatch(gameId, players);
 }
 
 export const DEMO_BOTS: Record<string, string[]> = {

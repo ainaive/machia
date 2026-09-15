@@ -15,14 +15,23 @@ export function HomePage() {
   }, []);
 
   return (
-    <SiteShell subtitle="多游戏 Bot 对战平台。选一款游戏进入大厅，加载本地 Bot，开局后自动回放。">
+    <SiteShell subtitle="自托管 Bot 对战平台。练习场免登录；正式比赛需注册后提交 Bot。">
       {error && (
         <div className="mb-4 rounded-md border border-clay/40 bg-[#f7e4d8] px-3 py-2 text-sm text-clay">
           {error}
         </div>
       )}
 
-      <h2 className="mb-4 font-display text-2xl font-bold">选择游戏</h2>
+      <div className="mb-8 rounded-md border border-moss/20 bg-moss/5 px-4 py-3">
+        <Link to="/contests" className="font-medium text-moss hover:underline">
+          正式比赛 →
+        </Link>
+        <p className="mt-1 text-sm text-ink/60">
+          报名、提交 Bot、管理员审批后进行 1v1 循环赛。
+        </p>
+      </div>
+
+      <h2 className="mb-4 font-display text-2xl font-bold">练习场</h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {games.map((g) => (
           <Link
