@@ -62,9 +62,18 @@ export interface GameInfo {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (
+    init?.body &&
+    typeof init.body === "string" &&
+    !headers.has("Content-Type")
+  ) {
+    headers.set("Content-Type", "application/json");
+  }
   const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    credentials: "include",
     ...init,
+    headers,
   });
   const data = await res.json();
   if (!res.ok) {
@@ -98,4 +107,133 @@ export function startDemo(gameId: string) {
 
 export function fetchReplay(id: string) {
   return api<MatchReplay>(`/api/matches/${id}/replay`);
+}
+
+export type UserRole = "user" | "admin";
+
+export interface PublicUser {
+  id: string;
+  username: string;
+  role: UserRole;
+}
+
+export interface ContestSummary {
+  id: string;
+  title: string;
+  gameId: string;
+  status: "open" | "running" | "finished";
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface ContestEntry {
+  id: string;
+  userId: string;
+  username: string;
+  botName: string | null;
+  status: "pending" | "approved" | "rejected";
+  rejectReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContestMatch {
+  id: string;
+  entryAId: string;
+  entryBId: string;
+  status: string;
+  matchId: string | null;
+  winnerEntryId: string | null;
+  scoreA: number | null;
+  scoreB: number | null;
+  error: string | null;
+}
+
+export interface ContestStanding {
+  entryId: string;
+  username: string;
+  botName: string | null;
+  wins: number;
+  draws: number;
+  losses: number;
+  scoreSum: number;
+  rank: number;
+}
+
+export interface ContestDetail {
+  contest: ContestSummary;
+  game: GameInfo;
+  entries: ContestEntry[];
+  myEntry: ContestEntry | null;
+  matches: ContestMatch[];
+  standings: ContestStanding[];
+}
+
+export function fetchMe() {
+  return api<{ user: PublicUser | null }>("/api/auth/me");
+}
+
+export function registerAccount(username: string, password: string) {
+  return api<{ user: PublicUser }>("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function loginAccount(username: string, password: string) {
+  return api<{ user: PublicUser }>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function logoutAccount() {
+  return api<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
+}
+
+export function fetchContests() {
+  return api<{ contests: ContestSummary[] }>("/api/contests");
+}
+
+export function fetchContest(id: string) {
+  return api<ContestDetail>(`/api/contests/${id}`);
+}
+
+export function createContest(title: string, gameId: string) {
+  return api<{ contest: ContestSummary }>("/api/contests", {
+    method: "POST",
+    body: JSON.stringify({ title, gameId }),
+  });
+}
+
+export function enterContest(id: string) {
+  return api<{ entry: ContestEntry }>(`/api/contests/${id}/enter`, {
+    method: "POST",
+  });
+}
+
+export function submitContestBot(id: string, files: Record<string, string>) {
+  return api<{ entry: ContestEntry }>(`/api/contests/${id}/bot`, {
+    method: "POST",
+    body: JSON.stringify({ files }),
+  });
+}
+
+export function approveEntry(contestId: string, entryId: string) {
+  return api<{ entry: ContestEntry }>(
+    `/api/contests/${contestId}/entries/${entryId}/approve`,
+    { method: "POST" },
+  );
+}
+
+export function rejectEntry(contestId: string, entryId: string, reason: string) {
+  return api<{ entry: ContestEntry }>(
+    `/api/contests/${contestId}/entries/${entryId}/reject`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
+export function startContest(id: string) {
+  return api<ContestDetail>(`/api/contests/${id}/start`, { method: "POST" });
 }

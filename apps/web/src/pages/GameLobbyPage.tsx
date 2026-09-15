@@ -127,7 +127,7 @@ export function GameLobbyPage() {
   }
 
   return (
-    <SiteShell accent={accent} subtitle={game.description}>
+    <SiteShell accent={accent} subtitle={`练习场 · ${game.description}`}>
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link
           to="/"
@@ -137,6 +137,7 @@ export function GameLobbyPage() {
         </Link>
         <span className="text-ink/30">/</span>
         <h2 className="font-display text-2xl font-bold">{game.name}</h2>
+        <span className="text-xs text-ink/45">练习场 · 样例 Bot</span>
       </div>
 
       {error && (
