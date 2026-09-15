@@ -307,14 +307,24 @@ app.get("/api/matches/:id/replay", async (c) => {
   return c.json(replay);
 });
 
-const port = Number(process.env.PORT ?? 3001);
+export function serverListenConfig(env: NodeJS.ProcessEnv = process.env): {
+  port: number;
+  hostname?: string;
+} {
+  const port = Number(env.PORT ?? 3001);
+  const hostname = env.HOST?.trim();
+  return hostname ? { port, hostname } : { port };
+}
+
+const listen = serverListenConfig();
 
 export default {
-  port,
+  ...listen,
   fetch: app.fetch,
 };
 
 if (import.meta.main) {
   kickContestWorker();
-  console.log(`Machia server listening on http://localhost:${port}`);
+  const host = listen.hostname ?? "localhost";
+  console.log(`Machia server listening on http://${host}:${listen.port}`);
 }

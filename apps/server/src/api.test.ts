@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { app } from "./index";
+import { app, serverListenConfig } from "./index";
 
 describe("API", () => {
   test("GET /api/health", async () => {
@@ -80,5 +80,16 @@ describe("API", () => {
       body: JSON.stringify({ gameId: "chess" }),
     });
     expect(res.status).toBe(400);
+  });
+
+  test("serverListenConfig defaults to port 3001 on all interfaces", () => {
+    expect(serverListenConfig({})).toEqual({ port: 3001 });
+  });
+
+  test("serverListenConfig honors PORT and HOST", () => {
+    expect(serverListenConfig({ PORT: "3010", HOST: "127.0.0.1" })).toEqual({
+      port: 3010,
+      hostname: "127.0.0.1",
+    });
   });
 });

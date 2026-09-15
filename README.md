@@ -39,7 +39,7 @@ MACHIA_ADMIN_USERNAME=admin MACHIA_ADMIN_PASSWORD=changeme bun run dev
 
 在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1，再看积分榜与回放。
 
-生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。
+生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。VPS 部署（nginx `:3000` TLS + loopback API）见 [docs/deploy.md](docs/deploy.md)。
 
 **信任模型：** 参赛 Bot 以 Node 子进程运行，第一期没有隔离沙箱。只在可信参赛者 / 自托管场景开赛。
 

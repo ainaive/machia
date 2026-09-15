@@ -1,0 +1,16 @@
+[Unit]
+Description=Machia bot competition platform
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/machia
+EnvironmentFile=/etc/machia.env
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/local/bin/bun run --filter @machia/server start
+Restart=on-failure
+RestartSec=3
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
