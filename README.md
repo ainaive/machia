@@ -1,6 +1,6 @@
 # Machia
 
-AI Bot 多游戏对战演示平台：从本地 `bots/` 加载 Node Bot，沙箱撮合，前端回放。
+AI Bot 多游戏对战平台：练习场加载本地 `bots/` 样例；正式赛事支持注册、提交 Bot、管理员审批与 1v1 循环赛。
 
 当前游戏：**Arena** · **Bomber** · **Tanks** · **Sokoban** · **Hold'em** · **Quoridor**。
 
@@ -16,18 +16,32 @@ bun install
 bun run dev
 ```
 
+可选：用环境变量固定管理员账号（否则**第一个注册用户**成为管理员）：
+
+```bash
+MACHIA_ADMIN_USERNAME=admin MACHIA_ADMIN_PASSWORD=changeme bun run dev
+```
+
 - Web: http://localhost:5173
 - API: http://localhost:3001
+- 数据：`data/machia.db`（SQLite）、`data/uploads/`（参赛 Bot）、`data/replays/`（回放）
 
 前端路由：
 
 | 路径 | 说明 |
 |------|------|
-| `/` | 游戏目录 |
-| `/games/:gameId` | 单游戏大厅（`arena` / `bomber` / `tanks` / `sokoban` / `holdem` / `quoridor`） |
+| `/` | 游戏目录（练习场入口）+ 正式比赛入口 |
+| `/login` `/register` | 登录 / 注册 |
+| `/contests` | 赛事列表（管理员可创建） |
+| `/contests/:id` | 报名、提交 Bot、审批、积分榜 |
+| `/games/:gameId` | 练习场大厅（样例 Bot，免登录） |
 | `/matches/:matchId` | 对局回放（可刷新） |
 
-在大厅里 **一键 Demo** 或勾选 Bot 开局。生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。
+在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1，再看积分榜与回放。
+
+生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。
+
+**信任模型：** 参赛 Bot 以 Node 子进程运行，第一期没有隔离沙箱。只在可信参赛者 / 自托管场景开赛。
 
 ## 仓库结构
 
