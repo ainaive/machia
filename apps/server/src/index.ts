@@ -1,5 +1,28 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { getCookie } from "hono/cookie";
+import {
+  SESSION_COOKIE,
+  clearSessionCookie,
+  deleteSession,
+  issueSession,
+  loginUser,
+  registerUser,
+  requireAdmin,
+  requireUser,
+  userFromRequest,
+} from "./auth";
+import {
+  createContest,
+  enterContest,
+  getContestDetail,
+  kickContestWorker,
+  listContests,
+  reviewEntry,
+  startContest,
+  submitBot,
+} from "./contests";
+import { HttpError } from "./errors";
 import {
   isMatchRunning,
   listBots,
@@ -16,8 +39,50 @@ app.use(
   "/api/*",
   cors({
     origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    credentials: true,
   }),
 );
+
+function errorStatus(err: unknown): { message: string; status: 400 | 401 | 403 | 404 | 409 | 500 } {
+  if (err instanceof HttpError) {
+    return { message: err.message, status: err.status };
+  }
+  const message = err instanceof Error ? err.message : "Request failed";
+  const status = message.includes("already running") ? 409 : 400;
+  return { message, status };
+}
+
+async function readBotFiles(c: {
+  req: { header: (name: string) => string | undefined; json: <T>() => Promise<T>; formData: () => Promise<FormData> };
+}): Promise<Record<string, string>> {
+  const contentType = c.req.header("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const body = await c.req.json<{ files?: Record<string, string> }>();
+    if (!body.files || typeof body.files !== "object") {
+      throw new HttpError(400, "files object required");
+    }
+    return body.files;
+  }
+  const form = await c.req.formData();
+  const files: Record<string, string> = {};
+  for (const [, value] of form.entries()) {
+    if (!isUploadedFile(value)) continue;
+    files[value.name] = await value.text();
+  }
+  return files;
+}
+
+function isUploadedFile(
+  value: unknown,
+): value is { name: string; text: () => Promise<string> } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    "text" in value &&
+    typeof (value as { text: unknown }).text === "function"
+  );
+}
 
 app.get("/api/health", (c) => c.json({ ok: true, running: isMatchRunning() }));
 
@@ -34,6 +99,147 @@ app.get("/api/bots", async (c) => {
       games,
     })),
   });
+});
+
+app.post("/api/auth/register", async (c) => {
+  try {
+    const body = await c.req.json<{ username?: string; password?: string }>();
+    const user = await registerUser(body.username ?? "", body.password ?? "");
+    await issueSession(c, user);
+    return c.json({ user }, 201);
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/auth/login", async (c) => {
+  try {
+    const body = await c.req.json<{ username?: string; password?: string }>();
+    const user = await loginUser(body.username ?? "", body.password ?? "");
+    await issueSession(c, user);
+    return c.json({ user });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/auth/logout", async (c) => {
+  const token = getCookie(c, SESSION_COOKIE);
+  if (token) await deleteSession(token);
+  clearSessionCookie(c);
+  return c.json({ ok: true });
+});
+
+app.get("/api/auth/me", async (c) => {
+  const user = await userFromRequest(c);
+  return c.json({ user });
+});
+
+app.get("/api/contests", async (c) => {
+  try {
+    const contests = await listContests();
+    return c.json({ contests });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/contests", async (c) => {
+  try {
+    const admin = await requireAdmin(c);
+    const body = await c.req.json<{ title?: string; gameId?: string }>();
+    const contest = await createContest(admin, body.title ?? "", body.gameId ?? "");
+    return c.json({ contest }, 201);
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.get("/api/contests/:id", async (c) => {
+  try {
+    const viewer = await userFromRequest(c);
+    const detail = await getContestDetail(c.req.param("id"), viewer);
+    return c.json(detail);
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/contests/:id/enter", async (c) => {
+  try {
+    const user = await requireUser(c);
+    const entry = await enterContest(c.req.param("id"), user);
+    return c.json({ entry });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/contests/:id/bot", async (c) => {
+  try {
+    const user = await requireUser(c);
+    const files = await readBotFiles(c);
+    const entry = await submitBot(c.req.param("id"), user, files);
+    return c.json({ entry });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/contests/:id/entries/:entryId/approve", async (c) => {
+  try {
+    await requireAdmin(c);
+    const entry = await reviewEntry(
+      c.req.param("id"),
+      c.req.param("entryId"),
+      "approve",
+    );
+    return c.json({ entry });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/contests/:id/entries/:entryId/reject", async (c) => {
+  try {
+    await requireAdmin(c);
+    let reason = "";
+    try {
+      const body = await c.req.json<{ reason?: string }>();
+      reason = body.reason ?? "";
+    } catch {
+      // empty body
+    }
+    const entry = await reviewEntry(
+      c.req.param("id"),
+      c.req.param("entryId"),
+      "reject",
+      reason,
+    );
+    return c.json({ entry });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/contests/:id/start", async (c) => {
+  try {
+    await requireAdmin(c);
+    const detail = await startContest(c.req.param("id"));
+    return c.json(detail);
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
 });
 
 app.get("/api/matches", async (c) => {
@@ -54,8 +260,7 @@ app.post("/api/matches", async (c) => {
       totalTicks: replay.totalTicks,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to start match";
-    const status = message.includes("already running") ? 409 : 400;
+    const { message, status } = errorStatus(err);
     return c.json({ error: message }, status);
   }
 });
@@ -77,8 +282,7 @@ app.post("/api/matches/demo", async (c) => {
       totalTicks: replay.totalTicks,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Demo failed";
-    const status = message.includes("already running") ? 409 : 400;
+    const { message, status } = errorStatus(err);
     return c.json({ error: message }, status);
   }
 });
@@ -111,5 +315,6 @@ export default {
 };
 
 if (import.meta.main) {
+  kickContestWorker();
   console.log(`Machia server listening on http://localhost:${port}`);
 }

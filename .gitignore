@@ -8,4 +8,7 @@ build/
 *.tsbuildinfo
 data/replays/*
 !data/replays/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
+data/*.db
 apps/web/dist/
