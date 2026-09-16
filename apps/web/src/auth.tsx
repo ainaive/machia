@@ -8,9 +8,9 @@ import {
 } from "react";
 import {
   fetchMe,
-  logoutAccount,
   type PublicUser,
 } from "./api";
+import { signOut } from "./auth-client";
 
 interface AuthState {
   user: PublicUser | null;
@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const logout = useCallback(async () => {
-    await logoutAccount();
+    await signOut();
     setUser(null);
   }, []);
 

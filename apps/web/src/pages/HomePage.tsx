@@ -15,7 +15,7 @@ export function HomePage() {
   }, []);
 
   return (
-    <SiteShell subtitle="自托管 Bot 对战平台。练习场免登录；正式比赛需注册后提交 Bot。">
+    <SiteShell subtitle="自托管 Bot 对战平台。练习场免登录；正式比赛需邀请码注册后提交 Bot。">
       {error && (
         <div className="mb-4 rounded-md border border-clay/40 bg-[#f7e4d8] px-3 py-2 text-sm text-clay">
           {error}

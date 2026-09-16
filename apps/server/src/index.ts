@@ -1,13 +1,8 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { getCookie } from "hono/cookie";
 import {
-  SESSION_COOKIE,
-  clearSessionCookie,
-  deleteSession,
-  issueSession,
-  loginUser,
-  registerUser,
+  corsOrigins,
+  getAuth,
   requireAdmin,
   requireUser,
   userFromRequest,
@@ -22,7 +17,10 @@ import {
   startContest,
   submitBot,
 } from "./contests";
+import { getDb } from "./db";
 import { HttpError } from "./errors";
+import { createInvite, deleteInvite, listInvites } from "./invites";
+import { INVITE_HEADER } from "./invite-code";
 import {
   isMatchRunning,
   listBots,
@@ -38,10 +36,24 @@ export const app = new Hono();
 app.use(
   "/api/*",
   cors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    origin: corsOrigins(),
     credentials: true,
+    allowHeaders: ["Content-Type", "Authorization", INVITE_HEADER],
+    allowMethods: ["POST", "GET", "DELETE", "OPTIONS"],
   }),
 );
+
+app.use("/api/*", async (c, next) => {
+  const pathName = c.req.path;
+  if (
+    pathName.startsWith("/api/auth") ||
+    pathName.startsWith("/api/admin") ||
+    pathName.startsWith("/api/contests")
+  ) {
+    await getDb();
+  }
+  await next();
+});
 
 function errorStatus(err: unknown): { message: string; status: 400 | 401 | 403 | 404 | 409 | 500 } {
   if (err instanceof HttpError) {
@@ -101,40 +113,55 @@ app.get("/api/bots", async (c) => {
   });
 });
 
-app.post("/api/auth/register", async (c) => {
-  try {
-    const body = await c.req.json<{ username?: string; password?: string }>();
-    const user = await registerUser(body.username ?? "", body.password ?? "");
-    await issueSession(c, user);
-    return c.json({ user }, 201);
-  } catch (err) {
-    const { message, status } = errorStatus(err);
-    return c.json({ error: message }, status);
-  }
-});
-
-app.post("/api/auth/login", async (c) => {
-  try {
-    const body = await c.req.json<{ username?: string; password?: string }>();
-    const user = await loginUser(body.username ?? "", body.password ?? "");
-    await issueSession(c, user);
-    return c.json({ user });
-  } catch (err) {
-    const { message, status } = errorStatus(err);
-    return c.json({ error: message }, status);
-  }
-});
-
-app.post("/api/auth/logout", async (c) => {
-  const token = getCookie(c, SESSION_COOKIE);
-  if (token) await deleteSession(token);
-  clearSessionCookie(c);
-  return c.json({ ok: true });
-});
-
 app.get("/api/auth/me", async (c) => {
   const user = await userFromRequest(c);
   return c.json({ user });
+});
+
+app.all("/api/auth/*", (c) => getAuth().handler(c.req.raw));
+
+app.get("/api/admin/invites", async (c) => {
+  try {
+    await requireAdmin(c);
+    const invites = await listInvites();
+    return c.json({ invites });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/admin/invites", async (c) => {
+  try {
+    const admin = await requireAdmin(c);
+    let body: { note?: string; maxUses?: number; expiresAt?: string | null } = {};
+    try {
+      body = await c.req.json();
+    } catch {
+      // empty body
+    }
+    const invite = await createInvite({
+      createdBy: admin.id,
+      note: body.note,
+      maxUses: body.maxUses,
+      expiresAt: body.expiresAt,
+    });
+    return c.json({ invite }, 201);
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.delete("/api/admin/invites/:id", async (c) => {
+  try {
+    await requireAdmin(c);
+    await deleteInvite(c.req.param("id"));
+    return c.json({ ok: true });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
 });
 
 app.get("/api/contests", async (c) => {

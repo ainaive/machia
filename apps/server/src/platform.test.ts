@@ -6,6 +6,7 @@ import { app } from "./index";
 import { parseBotFiles } from "./botFiles";
 import { resetDatabase, closeDatabase } from "./db";
 import { waitForContestWorkerIdle } from "./contests";
+import { setMailSink } from "./mail";
 
 const WAIT_BOT = `const readline = require("node:readline");
 const rl = readline.createInterface({ input: process.stdin });
@@ -30,7 +31,15 @@ function arenaFiles(name: string): Record<string, string> {
   };
 }
 
+const ORIGIN = "http://localhost:3001";
+const ADMIN_PASSWORD = "adminpass1";
+
 function cookieFrom(res: Response): string {
+  const headers = res.headers as Headers & { getSetCookie?: () => string[] };
+  const list = headers.getSetCookie?.() ?? [];
+  if (list.length > 0) {
+    return list.map((c) => c.split(";")[0]!).join("; ");
+  }
   const raw = res.headers.get("set-cookie");
   if (!raw) throw new Error("missing Set-Cookie");
   return raw.split(";")[0]!;
@@ -44,20 +53,75 @@ async function json(
   if (!headers.has("Content-Type") && init?.body && typeof init.body === "string") {
     headers.set("Content-Type", "application/json");
   }
+  if (!headers.has("Origin")) headers.set("Origin", ORIGIN);
   if (init?.cookie) headers.set("Cookie", init.cookie);
-  const res = await app.request(pathUrl, { ...init, headers });
-  const body = (await res.json()) as Record<string, unknown>;
+  const url = pathUrl.startsWith("http") ? pathUrl : `${ORIGIN}${pathUrl}`;
+  const res = await app.request(url, { ...init, headers });
+  const text = await res.text();
+  const body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
   return { status: res.status, body };
 }
 
-async function register(username: string, password = "password1") {
-  const res = await app.request("/api/auth/register", {
+async function signIn(username: string, password: string) {
+  const headers = {
+    "Content-Type": "application/json",
+    Origin: ORIGIN,
+  };
+  const res = await app.request(`${ORIGIN}/api/auth/sign-in/username`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ username, password }),
   });
-  const body = (await res.json()) as { user: { id: string; username: string; role: string }; error?: string };
-  return { status: res.status, cookie: cookieFrom(res), body };
+  const body = (await res.json()) as Record<string, unknown>;
+  return {
+    status: res.status,
+    cookie: res.headers.get("set-cookie") ? cookieFrom(res) : "",
+    body,
+  };
+}
+
+async function adminSession() {
+  return signIn("admin", ADMIN_PASSWORD);
+}
+
+async function createInviteCode(cookie: string, extra?: { maxUses?: number }) {
+  const created = await json("/api/admin/invites", {
+    method: "POST",
+    cookie,
+    body: JSON.stringify(extra ?? {}),
+  });
+  const invite = created.body.invite as { id: string; code: string };
+  return { status: created.status, invite };
+}
+
+async function register(
+  username: string,
+  opts?: { password?: string; email?: string; invite?: string; cookie?: string },
+) {
+  let invite = opts?.invite;
+  if (!invite) {
+    const admin = await adminSession();
+    invite = (await createInviteCode(admin.cookie)).invite.code;
+  }
+  const raw = await app.request(`${ORIGIN}/api/auth/sign-up/email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: ORIGIN,
+      "x-invite-code": invite,
+    },
+    body: JSON.stringify({
+      email: opts?.email ?? `${username}@test.local`,
+      password: opts?.password ?? "password1",
+      name: username,
+      username,
+    }),
+  });
+  const body = (await raw.json()) as {
+    user?: { id: string; username: string; role: string };
+    message?: string;
+  };
+  return { status: raw.status, cookie: raw.headers.get("set-cookie") ? cookieFrom(raw) : "", body };
 }
 
 describe("bot file validation", () => {
@@ -91,66 +155,129 @@ describe("auth and contests", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "machia-"));
     process.env.MACHIA_UPLOADS_DIR = path.join(dir, "uploads");
     process.env.MACHIA_CONTEST_MAX_TICKS = "8";
-    delete process.env.MACHIA_ADMIN_USERNAME;
-    delete process.env.MACHIA_ADMIN_PASSWORD;
+    process.env.MACHIA_ADMIN_EMAIL = "admin@test.local";
+    process.env.MACHIA_ADMIN_USERNAME = "admin";
+    process.env.MACHIA_ADMIN_PASSWORD = ADMIN_PASSWORD;
+    process.env.MACHIA_AUTH_RATE_LIMIT = "0";
+    process.env.MACHIA_PUBLIC_URL = ORIGIN;
+    process.env.MACHIA_AUTH_SECRET = "test-secret-test-secret-test-secr";
     await resetDatabase(path.join(dir, "t.db"));
   });
 
   afterEach(async () => {
+    setMailSink(null);
     await waitForContestWorkerIdle();
     closeDatabase();
   });
 
-  test("register logs in; first user is admin; duplicate rejected", async () => {
-    const a = await register("alice");
-    expect(a.status).toBe(201);
-    expect(a.body.user.role).toBe("admin");
-
-    const me = await json("/api/auth/me", { cookie: a.cookie });
-    expect(me.body.user).toMatchObject({ username: "alice", role: "admin" });
-
-    const dup = await json("/api/auth/register", {
+  test("rejects signup without a valid invite", async () => {
+    const res = await json("/api/auth/sign-up/email", {
       method: "POST",
-      body: JSON.stringify({ username: "alice", password: "password1" }),
+      body: JSON.stringify({
+        email: "alice@test.local",
+        password: "password1",
+        name: "alice",
+        username: "alice",
+      }),
     });
-    expect(dup.status).toBe(409);
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(res.body).toLowerCase()).toContain("invite");
+  });
 
-    const bob = await register("bob");
-    expect(bob.body.user.role).toBe("user");
+  test("invite signup logs in; duplicate email rejected; invite is single-use", async () => {
+    const admin = await adminSession();
+    expect(admin.status).toBe(200);
+    const me = await json("/api/auth/me", { cookie: admin.cookie });
+    expect(me.body.user).toMatchObject({ username: "admin", role: "admin" });
+
+    const { invite } = await createInviteCode(admin.cookie);
+    const alice = await register("alice", { invite: invite.code });
+    expect(alice.status).toBe(200);
+    expect(alice.body.user).toMatchObject({ username: "alice", role: "user" });
+
+    const reuse = await register("bob", { invite: invite.code, email: "bob@test.local" });
+    expect(reuse.status).toBeGreaterThanOrEqual(400);
+
+    const dup = await register("alice2", { email: "alice@test.local" });
+    expect(dup.status).toBeGreaterThanOrEqual(400);
   });
 
   test("login rejects bad password; logout clears session", async () => {
-    const a = await register("alice");
-    const bad = await json("/api/auth/login", {
+    await register("alice");
+    const bad = await json("/api/auth/sign-in/username", {
       method: "POST",
       body: JSON.stringify({ username: "alice", password: "wrongpass" }),
     });
     expect(bad.status).toBe(401);
 
-    const ok = await json("/api/auth/login", {
+    const ok = await json("/api/auth/sign-in/email", {
       method: "POST",
-      body: JSON.stringify({ username: "alice", password: "password1" }),
+      body: JSON.stringify({ email: "alice@test.local", password: "password1" }),
     });
     expect(ok.status).toBe(200);
 
-    await json("/api/auth/logout", { method: "POST", cookie: a.cookie });
-    const me = await json("/api/auth/me", { cookie: a.cookie });
+    const alice = await signIn("alice", "password1");
+    await json("/api/auth/sign-out", { method: "POST", cookie: alice.cookie });
+    const me = await json("/api/auth/me", { cookie: alice.cookie });
     expect(me.body.user).toBeNull();
   });
 
-  test("non-admin cannot create a contest", async () => {
+  test("password reset email lets the user set a new password", async () => {
     await register("alice");
+    let mailed = "";
+    setMailSink((message) => {
+      mailed = message.text;
+    });
+
+    const requested = await json("/api/auth/request-password-reset", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "alice@test.local",
+        redirectTo: `${ORIGIN}/reset-password`,
+      }),
+    });
+    expect(requested.status).toBe(200);
+    expect(mailed).toContain("http");
+
+    const tokenMatch = mailed.match(/\/reset-password\/([^?\s]+)/);
+    expect(tokenMatch?.[1]).toBeTruthy();
+    const token = decodeURIComponent(tokenMatch![1]!);
+
+    const reset = await json("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword: "password2" }),
+    });
+    expect(reset.status).toBe(200);
+
+    const oldPass = await json("/api/auth/sign-in/username", {
+      method: "POST",
+      body: JSON.stringify({ username: "alice", password: "password1" }),
+    });
+    expect(oldPass.status).toBe(401);
+
+    const next = await signIn("alice", "password2");
+    expect(next.status).toBe(200);
+  });
+
+  test("non-admin cannot create a contest or invite", async () => {
     const bob = await register("bob");
-    const res = await json("/api/contests", {
+    const contest = await json("/api/contests", {
       method: "POST",
       cookie: bob.cookie,
       body: JSON.stringify({ title: "Cup", gameId: "arena" }),
     });
-    expect(res.status).toBe(403);
+    expect(contest.status).toBe(403);
+
+    const invite = await json("/api/admin/invites", {
+      method: "POST",
+      cookie: bob.cookie,
+      body: "{}",
+    });
+    expect(invite.status).toBe(403);
   });
 
   test("guest cannot enter", async () => {
-    const admin = await register("alice");
+    const admin = await adminSession();
     const created = await json("/api/contests", {
       method: "POST",
       cookie: admin.cookie,
@@ -162,7 +289,7 @@ describe("auth and contests", () => {
   });
 
   test("full contest lifecycle: submit, approve, round-robin, standings", async () => {
-    const admin = await register("alice");
+    const admin = await adminSession();
     const bob = await register("bob");
 
     const created = await json("/api/contests", {
