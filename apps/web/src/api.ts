@@ -174,22 +174,30 @@ export function fetchMe() {
   return api<{ user: PublicUser | null }>("/api/auth/me");
 }
 
-export function registerAccount(username: string, password: string) {
-  return api<{ user: PublicUser }>("/api/auth/register", {
+export interface PublicInvite {
+  id: string;
+  code: string;
+  note: string | null;
+  maxUses: number;
+  usedCount: number;
+  expiresAt: string | null;
+  createdAt: string;
+  createdBy: string;
+}
+
+export function fetchInvites() {
+  return api<{ invites: PublicInvite[] }>("/api/admin/invites");
+}
+
+export function createInvite(input: { note?: string; maxUses?: number; expiresAt?: string }) {
+  return api<{ invite: PublicInvite }>("/api/admin/invites", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify(input),
   });
 }
 
-export function loginAccount(username: string, password: string) {
-  return api<{ user: PublicUser }>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ username, password }),
-  });
-}
-
-export function logoutAccount() {
-  return api<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
+export function deleteInvite(id: string) {
+  return api<{ ok: boolean }>(`/api/admin/invites/${id}`, { method: "DELETE" });
 }
 
 export function fetchContests() {

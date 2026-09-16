@@ -61,6 +61,14 @@ export function SiteShell({
             </Link>
             {user ? (
               <>
+                {user.role === "admin" ? (
+                  <Link
+                    to="/admin/invites"
+                    className="text-ink/70 underline-offset-2 hover:text-moss hover:underline"
+                  >
+                    邀请码
+                  </Link>
+                ) : null}
                 <span className="text-ink/45">
                   {user.username}
                   {user.role === "admin" ? " · 管理员" : ""}
