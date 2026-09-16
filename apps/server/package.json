@@ -13,6 +13,7 @@
     "@machia/engine": "workspace:*",
     "@machia/protocol": "workspace:*",
     "@machia/runner": "workspace:*",
+    "better-auth": "^1.7.5",
     "hono": "^4.9.6"
   },
   "devDependencies": {

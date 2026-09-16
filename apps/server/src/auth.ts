@@ -1,12 +1,10 @@
-import { getCookie, setCookie } from "hono/cookie";
 import type { Context } from "hono";
-import { getDb } from "./db";
+import type { Database } from "bun:sqlite";
+import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
+import { username } from "better-auth/plugins";
 import { HttpError } from "./errors";
-import { newId } from "./ids";
-
-export const SESSION_COOKIE = "machia_session";
-const SESSION_DAYS = 7;
-const USERNAME_RE = /^[a-zA-Z0-9_]{3,32}$/;
+import { consumeInvite, readInviteCode, restoreInvite } from "./invite-code";
 
 export type UserRole = "user" | "admin";
 
@@ -16,122 +14,139 @@ export interface PublicUser {
   role: UserRole;
 }
 
-interface UserRow {
-  id: string;
-  username: string;
-  password_hash: string;
-  role: UserRole;
+const USERNAME_RE = /^[a-zA-Z0-9_]+$/;
+
+let authInstance: ReturnType<typeof createMachiaAuth> | null = null;
+let inviteBypass = false;
+
+export function setAuth(auth: ReturnType<typeof createMachiaAuth> | null): void {
+  authInstance = auth;
 }
 
-function publicUser(row: Pick<UserRow, "id" | "username" | "role">): PublicUser {
-  return { id: row.id, username: row.username, role: row.role };
+export function getAuth(): ReturnType<typeof createMachiaAuth> {
+  if (!authInstance) throw new Error("Auth is not initialized");
+  return authInstance;
 }
 
-function sessionMaxAgeSec(): number {
-  return SESSION_DAYS * 24 * 60 * 60;
-}
-
-export function setSessionCookie(c: Context, token: string): void {
-  setCookie(c, SESSION_COOKIE, token, {
-    httpOnly: true,
-    path: "/",
-    sameSite: "Lax",
-    maxAge: sessionMaxAgeSec(),
-  });
-}
-
-export function clearSessionCookie(c: Context): void {
-  setCookie(c, SESSION_COOKIE, "", {
-    httpOnly: true,
-    path: "/",
-    sameSite: "Lax",
-    maxAge: 0,
-  });
-}
-
-export async function registerUser(
-  username: string,
-  password: string,
-): Promise<PublicUser> {
-  const name = username.trim();
-  if (!USERNAME_RE.test(name)) {
-    throw new HttpError(
-      400,
-      "Username must be 3–32 characters (letters, numbers, underscore)",
-    );
+export async function withInviteBypass<T>(fn: () => Promise<T>): Promise<T> {
+  inviteBypass = true;
+  try {
+    return await fn();
+  } finally {
+    inviteBypass = false;
   }
-  if (password.length < 8 || password.length > 128) {
-    throw new HttpError(400, "Password must be 8–128 characters");
-  }
-
-  const db = await getDb();
-  const taken = db
-    .query(`SELECT id FROM users WHERE username = ?`)
-    .get(name);
-  if (taken) throw new HttpError(409, "Username already taken");
-
-  const admins = db.query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`).get();
-  const role: UserRole = admins ? "user" : "admin";
-  const id = newId("u");
-  const hash = await Bun.password.hash(password);
-  db.run(
-    `INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)`,
-    [id, name, hash, role, new Date().toISOString()],
-  );
-  return { id, username: name, role };
 }
 
-export async function loginUser(
-  username: string,
-  password: string,
-): Promise<PublicUser> {
-  const db = await getDb();
-  const row = db
-    .query<UserRow, [string]>(
-      `SELECT id, username, password_hash, role FROM users WHERE username = ?`,
-    )
-    .get(username.trim());
-  if (!row) throw new HttpError(401, "Invalid username or password");
-  const ok = await Bun.password.verify(password, row.password_hash);
-  if (!ok) throw new HttpError(401, "Invalid username or password");
-  return publicUser(row);
+export function publicOrigin(): string {
+  const raw = process.env.MACHIA_PUBLIC_URL?.trim();
+  if (raw) return raw.replace(/\/$/, "");
+  return "http://localhost:3001";
 }
 
-export async function createSession(userId: string): Promise<string> {
-  const db = await getDb();
-  const token = newId("s");
-  const expires = new Date(Date.now() + sessionMaxAgeSec() * 1000).toISOString();
-  db.run(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`, [
-    token,
-    userId,
-    expires,
+export function corsOrigins(): string[] {
+  const origins = new Set([
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3001",
+    "http://localhost",
+    publicOrigin(),
   ]);
-  return token;
+  return [...origins];
 }
 
-export async function deleteSession(token: string): Promise<void> {
-  const db = await getDb();
-  db.run(`DELETE FROM sessions WHERE token = ?`, [token]);
+function authSecret(): string {
+  const secret = process.env.MACHIA_AUTH_SECRET ?? process.env.BETTER_AUTH_SECRET;
+  if (secret && secret.length >= 32) return secret;
+  return "machia-dev-secret-please-change-32ch";
 }
 
-export async function userFromToken(token: string): Promise<PublicUser | null> {
-  const db = await getDb();
-  const now = new Date().toISOString();
-  const row = db
-    .query<UserRow, [string, string]>(
-      `SELECT u.id, u.username, u.password_hash, u.role
-       FROM sessions s
-       JOIN users u ON u.id = s.user_id
-       WHERE s.token = ? AND s.expires_at > ?`,
-    )
-    .get(token, now);
-  return row ? publicUser(row) : null;
+export function createMachiaAuth(db: Database) {
+  const origin = publicOrigin();
+  return betterAuth({
+    database: db,
+    secret: authSecret(),
+    baseURL: origin,
+    basePath: "/api/auth",
+    trustedOrigins: corsOrigins(),
+    user: {
+      modelName: "users",
+      additionalFields: {
+        role: {
+          type: "string",
+          required: false,
+          defaultValue: "user",
+          input: false,
+        },
+      },
+    },
+    session: { modelName: "sessions" },
+    account: { modelName: "accounts" },
+    verification: { modelName: "verifications" },
+    emailAndPassword: {
+      enabled: true,
+      minPasswordLength: 8,
+      maxPasswordLength: 128,
+      sendResetPassword: async ({ url }) => {
+        console.info(`[machia] password reset link: ${url}`);
+      },
+    },
+    rateLimit: {
+      enabled: process.env.MACHIA_AUTH_RATE_LIMIT !== "0",
+    },
+    advanced: {
+      useSecureCookies: origin.startsWith("https://"),
+      database: {
+        // Migrations run in openDatabase; skip the boot-time check.
+        validateSchema: false,
+      },
+    },
+    plugins: [
+      username({
+        minUsernameLength: 3,
+        maxUsernameLength: 32,
+        displayUsername: false,
+        usernameValidator: (value) => USERNAME_RE.test(value),
+      }),
+    ],
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-up/email" || inviteBypass) return;
+        const code = readInviteCode(ctx);
+        if (!code) {
+          throw new APIError("BAD_REQUEST", { message: "Invite code required" });
+        }
+        if (!consumeInvite(db, code)) {
+          throw new APIError("BAD_REQUEST", { message: "Invalid or expired invite code" });
+        }
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-up/email" || inviteBypass) return;
+        if (ctx.context.newSession) return;
+        const code = readInviteCode(ctx);
+        if (code) restoreInvite(db, code);
+      }),
+    },
+  });
+}
+
+function roleOf(value: unknown): UserRole {
+  return value === "admin" ? "admin" : "user";
+}
+
+function publicUserFrom(user: {
+  id: string;
+  username?: string | null;
+  role?: string | null;
+}): PublicUser | null {
+  const username = user.username?.trim();
+  if (!username) return null;
+  return { id: user.id, username, role: roleOf(user.role) };
 }
 
 export async function userFromRequest(c: Context): Promise<PublicUser | null> {
-  const token = getCookie(c, SESSION_COOKIE);
-  if (!token) return null;
-  return userFromToken(token);
+  const session = await getAuth().api.getSession({ headers: c.req.raw.headers });
+  if (!session?.user) return null;
+  return publicUserFrom(session.user);
 }
 
 export async function requireUser(c: Context): Promise<PublicUser> {
@@ -144,9 +159,4 @@ export async function requireAdmin(c: Context): Promise<PublicUser> {
   const user = await requireUser(c);
   if (user.role !== "admin") throw new HttpError(403, "Admin only");
   return user;
-}
-
-export async function issueSession(c: Context, user: PublicUser): Promise<void> {
-  const token = await createSession(user.id);
-  setSessionCookie(c, token);
 }

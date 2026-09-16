@@ -1,7 +1,7 @@
 export class HttpError extends Error {
-  readonly status: 400 | 401 | 403 | 404 | 409;
+  readonly status: 400 | 401 | 403 | 404 | 409 | 500;
 
-  constructor(status: 400 | 401 | 403 | 404 | 409, message: string) {
+  constructor(status: 400 | 401 | 403 | 404 | 409 | 500, message: string) {
     super(message);
     this.status = status;
     this.name = "HttpError";
