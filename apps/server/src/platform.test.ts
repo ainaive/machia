@@ -6,6 +6,7 @@ import { app } from "./index";
 import { parseBotFiles } from "./botFiles";
 import { resetDatabase, closeDatabase } from "./db";
 import { waitForContestWorkerIdle } from "./contests";
+import { setMailSink } from "./mail";
 
 const WAIT_BOT = `const readline = require("node:readline");
 const rl = readline.createInterface({ input: process.stdin });
@@ -164,6 +165,7 @@ describe("auth and contests", () => {
   });
 
   afterEach(async () => {
+    setMailSink(null);
     await waitForContestWorkerIdle();
     closeDatabase();
   });
@@ -218,6 +220,43 @@ describe("auth and contests", () => {
     await json("/api/auth/sign-out", { method: "POST", cookie: alice.cookie });
     const me = await json("/api/auth/me", { cookie: alice.cookie });
     expect(me.body.user).toBeNull();
+  });
+
+  test("password reset email lets the user set a new password", async () => {
+    await register("alice");
+    let mailed = "";
+    setMailSink((message) => {
+      mailed = message.text;
+    });
+
+    const requested = await json("/api/auth/request-password-reset", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "alice@test.local",
+        redirectTo: `${ORIGIN}/reset-password`,
+      }),
+    });
+    expect(requested.status).toBe(200);
+    expect(mailed).toContain("http");
+
+    const tokenMatch = mailed.match(/\/reset-password\/([^?\s]+)/);
+    expect(tokenMatch?.[1]).toBeTruthy();
+    const token = decodeURIComponent(tokenMatch![1]!);
+
+    const reset = await json("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, newPassword: "password2" }),
+    });
+    expect(reset.status).toBe(200);
+
+    const oldPass = await json("/api/auth/sign-in/username", {
+      method: "POST",
+      body: JSON.stringify({ username: "alice", password: "password1" }),
+    });
+    expect(oldPass.status).toBe(401);
+
+    const next = await signIn("alice", "password2");
+    expect(next.status).toBe(200);
   });
 
   test("non-admin cannot create a contest or invite", async () => {

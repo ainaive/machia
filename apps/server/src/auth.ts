@@ -5,6 +5,7 @@ import { APIError, createAuthMiddleware } from "better-auth/api";
 import { username } from "better-auth/plugins";
 import { HttpError } from "./errors";
 import { consumeInvite, readInviteCode, restoreInvite } from "./invite-code";
+import { sendPasswordResetEmail } from "./mail";
 
 export type UserRole = "user" | "admin";
 
@@ -86,8 +87,8 @@ export function createMachiaAuth(db: Database) {
       enabled: true,
       minPasswordLength: 8,
       maxPasswordLength: 128,
-      sendResetPassword: async ({ url }) => {
-        console.info(`[machia] password reset link: ${url}`);
+      sendResetPassword: async ({ user, url }) => {
+        await sendPasswordResetEmail({ to: user.email, url });
       },
     },
     rateLimit: {
