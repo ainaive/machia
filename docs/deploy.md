@@ -4,7 +4,9 @@ Production layout used on the current host: nginx terminates TLS on **port 3000*
 
 Public URL: `https://agrippa.ainaive.com:3000`
 
-The API process must be Bun (`bun:sqlite`, `Bun.password`). Bot subprocesses are Node. On a mainland VPS, install Bun from npmmirror and packages from `registry.npmmirror.com`; Node can come from the Ubuntu/Huawei apt mirror.
+The API process must be Bun (`bun:sqlite`). Bot subprocesses are Node. On a mainland VPS, install Bun from npmmirror and packages from `registry.npmmirror.com`; Node can come from the Ubuntu/Huawei apt mirror.
+
+Auth is **Better Auth** (email + username, httpOnly cookies). Signup is **invite-only**. This release rewrites `users` / session tables: **back up `data/machia.db` before upgrading**. Old username-only passwords will not work; seed a new admin and re-invite users.
 
 ## Requirements
 
@@ -48,11 +50,22 @@ nginx -t && systemctl reload nginx
 ```
 HOST=127.0.0.1
 PORT=3001
+MACHIA_PUBLIC_URL=https://agrippa.ainaive.com:3000
+MACHIA_AUTH_SECRET=generate-a-long-random-string-at-least-32-chars
+MACHIA_ADMIN_EMAIL=admin@example.com
 MACHIA_ADMIN_USERNAME=admin
 MACHIA_ADMIN_PASSWORD=change-me
+# optional password-reset mail
+# MACHIA_SMTP_HOST=smtp.example.com
+# MACHIA_SMTP_PORT=587
+# MACHIA_SMTP_USER=
+# MACHIA_SMTP_PASS=
+# MACHIA_SMTP_FROM=Machia <noreply@example.com>
 ```
 
-The first registered user becomes admin if those two variables are unset.
+Admin is created from those three `MACHIA_ADMIN_*` variables on startup. There is no public signup: after login, open `/admin/invites`, generate a code, and send it (or `/register?code=…`) to players.
+
+Password reset uses SMTP when `MACHIA_SMTP_HOST` and `MACHIA_SMTP_FROM` are set; otherwise the API logs the reset URL. `MACHIA_PUBLIC_URL` must be the public origin so reset links in email (and Better Auth cookies) are correct.
 
 ## Notes
 

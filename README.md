@@ -1,6 +1,6 @@
 # Machia
 
-AI Bot 多游戏对战平台：练习场加载本地 `bots/` 样例；正式赛事支持注册、提交 Bot、管理员审批与 1v1 循环赛。
+AI Bot 多游戏对战平台：练习场加载本地 `bots/` 样例；正式赛事支持邀请码注册、提交 Bot、管理员审批与 1v1 循环赛。
 
 当前游戏：**Arena** · **Bomber** · **Tanks** · **Sokoban** · **Hold'em** · **Quoridor**。
 
@@ -16,11 +16,19 @@ bun install
 bun run dev
 ```
 
-可选：用环境变量固定管理员账号（否则**第一个注册用户**成为管理员）：
+管理员必须用环境变量种子（注册不再对公众开放，也没有「第一个注册用户变管理员」）：
 
 ```bash
-MACHIA_ADMIN_USERNAME=admin MACHIA_ADMIN_PASSWORD=changeme bun run dev
+MACHIA_ADMIN_EMAIL=admin@localhost \
+MACHIA_ADMIN_USERNAME=admin \
+MACHIA_ADMIN_PASSWORD=changeme \
+MACHIA_PUBLIC_URL=http://localhost:3001 \
+bun run dev
 ```
+
+本地未配 SMTP 时，忘记密码会把重置链接打到 **API 进程日志**。生产请设置 `MACHIA_SMTP_*`（见 [docs/deploy.md](docs/deploy.md)）。
+
+登录管理员后打开 `/admin/invites` 生成邀请码，把码或 `/register?code=…` 发给参赛者。
 
 - Web: http://localhost:5173
 - API: http://localhost:3001
@@ -31,13 +39,15 @@ MACHIA_ADMIN_USERNAME=admin MACHIA_ADMIN_PASSWORD=changeme bun run dev
 | 路径 | 说明 |
 |------|------|
 | `/` | 游戏目录（练习场入口）+ 正式比赛入口 |
-| `/login` `/register` | 登录 / 注册 |
+| `/login` `/register` | 登录 / 邀请码注册 |
+| `/forgot-password` `/reset-password` | 忘记密码 / 重置密码 |
+| `/admin/invites` | 管理员生成、作废邀请码 |
 | `/contests` | 赛事列表（管理员可创建） |
 | `/contests/:id` | 报名、提交 Bot、审批、积分榜 |
 | `/games/:gameId` | 练习场大厅（样例 Bot，免登录） |
 | `/matches/:matchId` | 对局回放（可刷新） |
 
-在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1，再看积分榜与回放。
+在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：邀请码注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1，再看积分榜与回放。
 
 生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。VPS 部署（nginx `:3000` TLS + loopback API）见 [docs/deploy.md](docs/deploy.md)。
 

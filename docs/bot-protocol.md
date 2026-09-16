@@ -26,7 +26,7 @@ bots/<bot-id>/
 ## Practice vs contest
 
 - **Practice lobby** (`/games/:gameId`) loads sample bots from the server `bots/` directory. No account needed.
-- **Contests** (`/contests`) require register/login. Upload the same layout (`manifest.json` + `entry` file, plus optional extra `.js`). Total size ≤ 256KB. `runtime` must be `"node"`. `games` must include the contest's game.
+- **Contests** (`/contests`) require an invite-code account. Upload the same layout (`manifest.json` + `entry` file, plus optional extra `.js`). Total size ≤ 256KB. `runtime` must be `"node"`. `games` must include the contest's game.
 - An admin reviews the source, then starts a **1v1 round-robin**. Ranking: wins, then draws, then sum of match scores.
 - Uploaded bots run as Node child processes. There is no sandbox in v1 — approval is a trust decision. Do not run untrusted contests on a shared machine.
 

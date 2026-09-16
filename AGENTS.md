@@ -4,10 +4,10 @@ Instructions for humans and coding agents working in this repository.
 
 ## Project
 
-Self-hosted AI bot competition platform (Bun workspaces). Bots are long-lived Node processes (stdin/stdout JSON). Matches run server-side; the web app replays them. Practice lobbies use sample bots; contests require accounts, bot upload, admin approval, then a 1v1 round-robin.
+Self-hosted AI bot competition platform (Bun workspaces). Bots are long-lived Node processes (stdin/stdout JSON). Matches run server-side; the web app replays them. Practice lobbies use sample bots; contests require invite-only accounts, bot upload, admin approval, then a 1v1 round-robin.
 
-- `apps/web` — Vite + React（`/` 目录、`/games/:gameId` 练习场、`/contests` 赛事、`/matches/:id` 回放）
-- `apps/server` — Hono API（会话 cookie、SQLite `data/machia.db`、赛事队列）
+- `apps/web` — Vite + React（`/` 目录、`/games/:gameId` 练习场、`/contests` 赛事、`/matches/:id` 回放、`/login` `/register` `/admin/invites`）
+- `apps/server` — Hono API（Better Auth 会话 cookie、SQLite `data/machia.db`、赛事队列）
 - `packages/game-api` — `GamePlugin` interfaces
 - `packages/engine` — Arena
 - `packages/games-bomber` — Bomber
