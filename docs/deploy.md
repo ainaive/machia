@@ -63,6 +63,8 @@ MACHIA_ADMIN_PASSWORD=change-me
 # MACHIA_SMTP_FROM=Machia <noreply@example.com>
 ```
 
+`MACHIA_AUTH_SECRET` is required (≥ 32 chars) whenever `MACHIA_PUBLIC_URL` is not a localhost URL — the API refuses to start without it. Generate one with `openssl rand -base64 48`. Only local setups trust the Vite dev origins (`localhost:5173`).
+
 Admin is created from those three `MACHIA_ADMIN_*` variables on startup. There is no public signup: after login, open `/admin/invites`, generate a code, and send it (or `/register?code=…`) to players.
 
 Password reset uses SMTP when `MACHIA_SMTP_HOST` and `MACHIA_SMTP_FROM` are set; otherwise the API logs the reset URL. `MACHIA_PUBLIC_URL` must be the public origin so reset links in email (and Better Auth cookies) are correct.
