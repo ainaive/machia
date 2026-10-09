@@ -57,6 +57,32 @@ describe("SubprocessRunner", () => {
     expect(await waitUntilGone(reply.pid)).toBe(true);
     expect(await waitUntilGone(reply.childPid)).toBe(true);
   });
+
+  test("late replies are dropped instead of answering the next tick", async () => {
+    const runner = new SubprocessRunner({ timeoutMs: 100 });
+    const bot = await runner.spawn(fixture("slow-start"));
+    try {
+      expect(await bot.requestAction({ tick: 0 })).toBeNull();
+      expect(await bot.requestAction({ tick: 1 })).toBeNull();
+      // Both late replies arrive while nothing is pending.
+      await Bun.sleep(600);
+      expect(await bot.requestAction({ tick: 2 })).toMatchObject({ tick: 2 });
+      expect(await bot.requestAction({ tick: 3 })).toMatchObject({ tick: 3 });
+    } finally {
+      await bot.destroy();
+    }
+  });
+
+  test("an oversized reply line counts as invalid without desyncing", async () => {
+    const runner = new SubprocessRunner({ timeoutMs: 5000 });
+    const bot = await runner.spawn(fixture("bloated"));
+    try {
+      expect(await bot.requestAction({ tick: 0 })).toBeNull();
+      expect(await bot.requestAction({ tick: 1 })).toMatchObject({ tick: 1 });
+    } finally {
+      await bot.destroy();
+    }
+  });
 });
 
 function isRunning(pid: number): boolean {
