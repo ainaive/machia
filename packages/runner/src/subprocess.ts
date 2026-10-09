@@ -60,18 +60,31 @@ class SubprocessBotHandle implements BotHandle {
     if (this.destroyed) return;
     this.destroyed = true;
     this.lines.close();
-    if (!this.child.killed) {
-      this.child.kill("SIGTERM");
-      await new Promise<void>((resolve) => {
-        const t = setTimeout(() => {
-          if (!this.child.killed) this.child.kill("SIGKILL");
-          resolve();
-        }, 500);
-        this.child.once("exit", () => {
-          clearTimeout(t);
-          resolve();
-        });
-      });
+    // `child.killed` only means a signal was sent, so wait for the real exit.
+    const exited = new Promise<void>((resolve) => {
+      if (this.hasExited()) resolve();
+      else this.child.once("exit", () => resolve());
+    });
+    this.signalGroup("SIGTERM");
+    if (!(await settlesWithin(exited, KILL_GRACE_MS))) {
+      this.signalGroup("SIGKILL");
+      await settlesWithin(exited, KILL_GRACE_MS);
+    }
+    // Processes the bot started share its group and may outlive it.
+    this.signalGroup("SIGKILL");
+  }
+
+  private hasExited(): boolean {
+    return this.child.exitCode !== null || this.child.signalCode !== null;
+  }
+
+  private signalGroup(signal: NodeJS.Signals): void {
+    const pid = this.child.pid;
+    if (pid === undefined) return;
+    try {
+      process.kill(-pid, signal);
+    } catch {
+      // Group already gone.
     }
   }
 
@@ -79,6 +92,18 @@ class SubprocessBotHandle implements BotHandle {
     if (this.destroyed || !this.child.stdin.writable) return;
     this.child.stdin.write(`${JSON.stringify(msg)}\n`);
   }
+}
+
+const KILL_GRACE_MS = 500;
+
+function settlesWithin(promise: Promise<void>, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    promise.then(() => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
 }
 
 class AsyncLineQueue {
@@ -181,6 +206,8 @@ export class SubprocessRunner implements BotRunner {
     }
     const child = spawn(this.nodePath, [entry], {
       cwd: args.botDir,
+      // Own process group, so destroy() can signal the bot and its children.
+      detached: true,
       stdio: ["pipe", "pipe", "pipe"],
       env: botEnv(args.playerId),
     });

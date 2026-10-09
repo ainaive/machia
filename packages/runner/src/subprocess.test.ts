@@ -41,4 +41,38 @@ describe("SubprocessRunner", () => {
       delete process.env.MACHIA_TEST_SECRET;
     }
   });
+
+  test("destroy kills a bot that ignores SIGTERM, and its children", async () => {
+    const runner = new SubprocessRunner({ timeoutMs: 5000 });
+    const bot = await runner.spawn(fixture("stubborn"));
+    const reply = (await bot.requestAction({ tick: 0 })) as {
+      pid: number;
+      childPid: number;
+    };
+    expect(isRunning(reply.pid)).toBe(true);
+    expect(isRunning(reply.childPid)).toBe(true);
+
+    await bot.destroy();
+
+    expect(await waitUntilGone(reply.pid)).toBe(true);
+    expect(await waitUntilGone(reply.childPid)).toBe(true);
+  });
 });
+
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitUntilGone(pid: number, ms = 2000): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (!isRunning(pid)) return true;
+    await Bun.sleep(25);
+  }
+  return !isRunning(pid);
+}

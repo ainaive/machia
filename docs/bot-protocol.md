@@ -68,7 +68,7 @@ Timeout (100ms) or invalid JSON → game default (`WAIT`).
 }
 ```
 
-Do not reply.
+Do not reply. The bot is then sent `SIGTERM`; 500ms later it and any processes it started are killed with `SIGKILL`.
 
 ---
 
