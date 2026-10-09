@@ -23,4 +23,22 @@ describe("SubprocessRunner", () => {
       runner.spawn(fixture("echo-tick", "/etc/passwd")),
     ).rejects.toThrow(/inside its folder/);
   });
+
+  test("does not leak the server environment to bots", async () => {
+    process.env.MACHIA_TEST_SECRET = "do-not-leak";
+    try {
+      const runner = new SubprocessRunner({ timeoutMs: 5000 });
+      const bot = await runner.spawn(fixture("env-probe"));
+      try {
+        const reply = (await bot.requestAction({ tick: 0 })) as { env: string[] };
+        expect(reply.env).toContain("MACHIA_PLAYER_ID");
+        expect(reply.env).toContain("PATH");
+        expect(reply.env).not.toContain("MACHIA_TEST_SECRET");
+      } finally {
+        await bot.destroy();
+      }
+    } finally {
+      delete process.env.MACHIA_TEST_SECRET;
+    }
+  });
 });

@@ -144,6 +144,18 @@ class AsyncLineQueue {
   }
 }
 
+// Bots are untrusted: never hand them the server's secrets (auth, SMTP, admin).
+const BOT_ENV_PASSTHROUGH = ["PATH", "LANG", "TZ"] as const;
+
+function botEnv(playerId: number): Record<string, string> {
+  const env: Record<string, string> = { MACHIA_PLAYER_ID: String(playerId) };
+  for (const key of BOT_ENV_PASSTHROUGH) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return env;
+}
+
 export class SubprocessRunner implements BotRunner {
   private readonly timeoutMs: number;
   private readonly nodePath: string;
@@ -170,10 +182,7 @@ export class SubprocessRunner implements BotRunner {
     const child = spawn(this.nodePath, [entry], {
       cwd: args.botDir,
       stdio: ["pipe", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        MACHIA_PLAYER_ID: String(args.playerId),
-      },
+      env: botEnv(args.playerId),
     });
 
     return new SubprocessBotHandle({
