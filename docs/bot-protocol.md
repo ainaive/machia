@@ -57,7 +57,7 @@ Sent every tick. Shape depends on `gameId`. Reply with:
 { "action": "..." }
 ```
 
-Timeout (100ms) or invalid JSON → game default (`WAIT`).
+Timeout (100ms; **1000ms for the first observation**, which also covers process startup) or invalid JSON → game default (`WAIT`).
 
 Write **exactly one line per observation**, in order. stdout is reserved for replies — log to stderr instead (the server keeps the first 8KB per bot). Replies are matched to observations by order, so:
 

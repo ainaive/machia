@@ -2,6 +2,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import path from "node:path";
 import type { PlayerResult } from "@machia/game-api";
 import {
+  DEFAULT_BOT_STARTUP_TIMEOUT_MS,
   DEFAULT_BOT_TIMEOUT_MS,
   type BotManifest,
   type ServerMessage,
@@ -10,6 +11,8 @@ import type { BotHandle, BotRunner } from "./types";
 
 export interface SubprocessRunnerOptions {
   timeoutMs?: number;
+  /** Timeout for the first observation only, which also covers process startup. */
+  startupTimeoutMs?: number;
   nodePath?: string;
 }
 
@@ -19,7 +22,9 @@ class SubprocessBotHandle implements BotHandle {
   readonly name: string;
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly timeoutMs: number;
+  private readonly startupTimeoutMs: number;
   private readonly replies: ReplyReader;
+  private started = false;
   private destroyed = false;
 
   constructor(args: {
@@ -28,12 +33,14 @@ class SubprocessBotHandle implements BotHandle {
     name: string;
     child: ChildProcessWithoutNullStreams;
     timeoutMs: number;
+    startupTimeoutMs: number;
   }) {
     this.playerId = args.playerId;
     this.botId = args.botId;
     this.name = args.name;
     this.child = args.child;
     this.timeoutMs = args.timeoutMs;
+    this.startupTimeoutMs = args.startupTimeoutMs;
     this.replies = new ReplyReader(args.child);
     // Writes can race the bot exiting; EPIPE must not crash the server.
     args.child.stdin.on("error", () => {});
@@ -46,8 +53,10 @@ class SubprocessBotHandle implements BotHandle {
 
   async requestAction(obs: unknown): Promise<unknown> {
     this.write({ type: "observation", ...(obs as object) });
+    const timeoutMs = this.started ? this.timeoutMs : this.startupTimeoutMs;
+    this.started = true;
     try {
-      const line = await this.replies.next(this.timeoutMs);
+      const line = await this.replies.next(timeoutMs);
       return JSON.parse(line);
     } catch {
       return null;
@@ -223,10 +232,15 @@ function botEnv(playerId: number): Record<string, string> {
 
 export class SubprocessRunner implements BotRunner {
   private readonly timeoutMs: number;
+  private readonly startupTimeoutMs: number;
   private readonly nodePath: string;
 
   constructor(options: SubprocessRunnerOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_BOT_TIMEOUT_MS;
+    this.startupTimeoutMs = Math.max(
+      this.timeoutMs,
+      options.startupTimeoutMs ?? DEFAULT_BOT_STARTUP_TIMEOUT_MS,
+    );
     this.nodePath = options.nodePath ?? "node";
   }
 
@@ -258,6 +272,7 @@ export class SubprocessRunner implements BotRunner {
       name: args.manifest.name,
       child,
       timeoutMs: this.timeoutMs,
+      startupTimeoutMs: this.startupTimeoutMs,
     });
   }
 }

@@ -22,3 +22,5 @@ export interface BotManifest {
 }
 
 export const DEFAULT_BOT_TIMEOUT_MS = 100;
+/** Budget for a bot's first observation, which also pays for process startup. */
+export const DEFAULT_BOT_STARTUP_TIMEOUT_MS = 1000;

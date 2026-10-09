@@ -59,7 +59,7 @@ describe("SubprocessRunner", () => {
   });
 
   test("late replies are dropped instead of answering the next tick", async () => {
-    const runner = new SubprocessRunner({ timeoutMs: 100 });
+    const runner = new SubprocessRunner({ timeoutMs: 100, startupTimeoutMs: 100 });
     const bot = await runner.spawn(fixture("slow-start"));
     try {
       expect(await bot.requestAction({ tick: 0 })).toBeNull();
@@ -68,6 +68,17 @@ describe("SubprocessRunner", () => {
       await Bun.sleep(600);
       expect(await bot.requestAction({ tick: 2 })).toMatchObject({ tick: 2 });
       expect(await bot.requestAction({ tick: 3 })).toMatchObject({ tick: 3 });
+    } finally {
+      await bot.destroy();
+    }
+  });
+
+  test("the first observation gets the longer startup budget", async () => {
+    const runner = new SubprocessRunner({ timeoutMs: 100 });
+    const bot = await runner.spawn(fixture("slow-start"));
+    try {
+      expect(await bot.requestAction({ tick: 0 })).toMatchObject({ tick: 0 });
+      expect(await bot.requestAction({ tick: 1 })).toMatchObject({ tick: 1 });
     } finally {
       await bot.destroy();
     }
