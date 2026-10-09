@@ -163,6 +163,10 @@ export class SubprocessRunner implements BotRunner {
       throw new Error(`Unsupported runtime: ${args.manifest.runtime}`);
     }
     const entry = path.resolve(args.botDir, args.manifest.entry);
+    const rel = path.relative(path.resolve(args.botDir), entry);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error(`Bot entry must stay inside its folder: ${args.manifest.entry}`);
+    }
     const child = spawn(this.nodePath, [entry], {
       cwd: args.botDir,
       stdio: ["pipe", "pipe", "pipe"],

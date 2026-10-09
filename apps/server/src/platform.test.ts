@@ -148,6 +148,64 @@ describe("bot file validation", () => {
     expect(parsed.manifest.name).toBe("Scout");
     expect(parsed.games).toContain("arena");
   });
+
+  test("rejects an entry that points outside the bot folder", () => {
+    for (const entry of ["../../other/bot.js", "sub/bot.js", "..\\bot.js"]) {
+      expect(() =>
+        parseBotFiles(
+          {
+            "manifest.json": JSON.stringify({
+              name: "X",
+              runtime: "node",
+              entry,
+              games: ["arena"],
+            }),
+            "bot.js": WAIT_BOT,
+          },
+          "arena",
+        ),
+      ).toThrow(/entry must be a file name/);
+    }
+  });
+
+  test("rejects games that is not an array of strings", () => {
+    expect(() =>
+      parseBotFiles(
+        {
+          "manifest.json": JSON.stringify({
+            name: "X",
+            runtime: "node",
+            entry: "bot.js",
+            games: "arena",
+          }),
+          "bot.js": WAIT_BOT,
+        },
+        "arena",
+      ),
+    ).toThrow(/games must be an array/);
+  });
+
+  test("stores the validated manifest, not the raw upload", () => {
+    const parsed = parseBotFiles(
+      {
+        "manifest.json": JSON.stringify({
+          name: "  Scout  ",
+          runtime: "node",
+          entry: "bot.js",
+          games: ["arena"],
+          extra: "dropped",
+        }),
+        "bot.js": WAIT_BOT,
+      },
+      "arena",
+    );
+    expect(JSON.parse(parsed.files["manifest.json"]!)).toEqual({
+      name: "Scout",
+      runtime: "node",
+      entry: "bot.js",
+      games: ["arena"],
+    });
+  });
 });
 
 describe("auth and contests", () => {

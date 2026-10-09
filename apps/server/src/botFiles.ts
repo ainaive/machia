@@ -66,20 +66,32 @@ export function parseBotFiles(
   if (typeof manifest.entry !== "string" || !manifest.entry.trim()) {
     throw new HttpError(400, "manifest.json must include entry");
   }
+  if (/[/\\]/.test(manifest.entry)) {
+    throw new HttpError(400, "manifest.json entry must be a file name");
+  }
   const entry = sanitizeFilename(manifest.entry);
-  manifest = { ...manifest, entry, name: manifest.name.trim() };
   if (!files[entry]) {
     throw new HttpError(400, `Missing entry file: ${entry}`);
   }
 
-  const games =
-    manifest.games && manifest.games.length > 0 ? manifest.games : ["arena"];
+  const rawGames: unknown = manifest.games;
+  if (
+    rawGames !== undefined &&
+    (!Array.isArray(rawGames) || !rawGames.every((g) => typeof g === "string"))
+  ) {
+    throw new HttpError(400, "manifest.json games must be an array of strings");
+  }
+  const games = rawGames && rawGames.length > 0 ? rawGames : ["arena"];
   if (!games.includes(gameId)) {
     throw new HttpError(
       400,
       `Bot games must include this contest's game (${gameId})`,
     );
   }
+
+  // Persist only the validated manifest; the runner reads it back from disk.
+  manifest = { name: manifest.name.trim(), runtime: "node", entry, games };
+  files["manifest.json"] = JSON.stringify(manifest, null, 2);
 
   return { manifest, games, files };
 }
