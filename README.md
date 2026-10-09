@@ -67,7 +67,7 @@ bun run dev
 
 生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。VPS 部署（nginx `:3000` TLS + loopback API）见 [docs/deploy.md](docs/deploy.md)。
 
-**信任模型：** 参赛 Bot 以 Node 子进程运行，第一期没有隔离沙箱。只在可信参赛者 / 自托管场景开赛。
+**信任模型：** 参赛 Bot 以 Node 子进程运行，第一期没有隔离沙箱。Bot 拿不到服务器环境变量（密钥等），但与 API 同属一个系统用户（生产为非 root 的 `machia`），仍能读取 `data/`。只在可信参赛者 / 自托管场景开赛。
 
 ## 仓库结构
 

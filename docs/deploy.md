@@ -20,7 +20,7 @@ Auth is **Better Auth** (email + username, httpOnly cookies). Signup is **invite
 |------|------|
 | `/opt/machia` | App checkout |
 | `/opt/machia/apps/web/dist` | Built SPA |
-| `/opt/machia/data/` | SQLite, uploads, replays |
+| `/opt/machia/data/` | SQLite, uploads, replays — the only path the service can write; owned by `machia` |
 | `/etc/machia.env` | Secrets (`HOST`, `PORT`, admin) |
 | `/etc/nginx/sites-available/machia` | nginx vhost (`deploy/nginx-machia.conf`) |
 | `/etc/systemd/system/machia.service` | systemd unit (`deploy/machia.service`) |
@@ -35,6 +35,13 @@ bun run build:web
 # nginx (www-data) must be able to read the SPA
 chmod -R a+rX /opt/machia/apps/web/dist
 
+# the service (and every bot it starts) runs as this unprivileged user
+useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin machia
+chmod -R a+rX /opt/machia        # checkout (incl. node_modules) readable by machia
+mkdir -p /opt/machia/data
+chown -R machia:machia /opt/machia/data
+chmod -R go-rwx /opt/machia/data # DB holds session tokens: owner-only
+
 install -m 600 /dev/null /etc/machia.env   # then set HOST/PORT/admin
 cp deploy/machia.service /etc/systemd/system/machia.service
 cp deploy/nginx-machia.conf /etc/nginx/sites-available/machia
@@ -44,6 +51,28 @@ systemctl daemon-reload
 systemctl enable --now machia
 nginx -t && systemctl reload nginx
 ```
+
+`/etc/machia.env` stays root-owned and `0600`: systemd reads it before dropping to the `machia` user.
+
+### Upgrading an install that ran as root
+
+Earlier versions of `deploy/machia.service` had no `User=`, so the service and all bots ran as root. To switch:
+
+```bash
+systemctl stop machia
+cp -a /opt/machia/data /root/machia-data.bak-$(date +%F)   # backup first, outside the checkout
+useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin machia
+chmod -R a+rX /opt/machia
+chown -R machia:machia /opt/machia/data
+chmod -R go-rwx /opt/machia/data
+cp deploy/machia.service /etc/systemd/system/machia.service
+systemctl daemon-reload && systemctl start machia
+# verify: the API and bot processes run as machia, not root
+ps -o user=,pid=,cmd= -u machia
+journalctl -u machia -n 50   # look for EACCES / read-only filesystem errors
+```
+
+The unit makes the system and the checkout read-only (`ProtectSystem=strict`); only `/opt/machia/data` is writable. If you move data elsewhere with `MACHIA_DB` / `MACHIA_UPLOADS_DIR`, add those paths to `ReadWritePaths=`.
 
 `/etc/machia.env` example (do not commit):
 
@@ -72,6 +101,7 @@ Password reset uses SMTP when `MACHIA_SMTP_HOST` and `MACHIA_SMTP_FROM` are set;
 ## Notes
 
 - Bind the API to loopback (`HOST=127.0.0.1`) so only nginx is public on `:3000`.
+- Bots share the `machia` user with the API, so a bot can still read `data/` (DB, other uploads). Running as non-root limits damage to the host, not to Machia itself — only approve bots you trust until bots get a real sandbox.
 - SPA routes need History API fallback (`try_files $uri /index.html`).
 - nginx gzip for `application/json` keeps match replays small (hundreds of KB uncompressed).
 - This host previously ran Agrippa on `:3000` / `127.0.0.1:3001`. Its Docker stack is stopped and `/etc/nginx/sites-enabled/agrippa` removed; configs remain under `/opt/agrippa` and `sites-available/agrippa`.

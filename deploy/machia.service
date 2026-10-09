@@ -4,13 +4,28 @@ After=network.target
 
 [Service]
 Type=simple
+# Unprivileged system user; bots run as this user too (see docs/deploy.md).
+User=machia
+Group=machia
 WorkingDirectory=/opt/machia
 EnvironmentFile=/etc/machia.env
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Bun's transpiler cache would need a writable home; skip it.
+Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
 ExecStart=/usr/local/bin/bun run --filter @machia/server start
 Restart=on-failure
 RestartSec=3
 KillMode=control-group
+
+# Hardening: read-only system and app checkout; only data/ is writable.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/machia/data
+# Bounds for the API plus up to four bot processes per match.
+MemoryMax=1G
+TasksMax=256
 
 [Install]
 WantedBy=multi-user.target
