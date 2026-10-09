@@ -73,6 +73,16 @@ describe("API", () => {
     expect(res.status).toBe(404);
   });
 
+  test("GET /api/matches/:id rejects path traversal ids", async () => {
+    const res = await app.request("/api/matches/..%2F..%2Fpackage");
+    expect(res.status).toBe(404);
+  });
+
+  test("GET /api/matches/:id/replay rejects path traversal ids", async () => {
+    const res = await app.request("/api/matches/..%2F..%2Fpackage/replay");
+    expect(res.status).toBe(404);
+  });
+
   test("POST /api/matches/demo rejects unknown game", async () => {
     const res = await app.request("/api/matches/demo", {
       method: "POST",

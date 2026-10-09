@@ -165,7 +165,11 @@ export async function startDemoMatch(gameId = "arena"): Promise<MatchReplay> {
   return startMatch(gameId, ids);
 }
 
+// Replay ids come from URLs; only plain ids may reach the filesystem.
+const REPLAY_ID_RE = /^[A-Za-z0-9_-]+$/;
+
 export async function readReplay(id: string): Promise<MatchReplay | null> {
+  if (!REPLAY_ID_RE.test(id)) return null;
   try {
     const raw = await readFile(path.join(REPLAYS_DIR, `${id}.json`), "utf8");
     return JSON.parse(raw) as MatchReplay;
