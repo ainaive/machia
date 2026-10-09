@@ -123,6 +123,8 @@ Actions: `FOLD` `CHECK` `CALL` `RAISE` `WAIT`
 - One hand per match (2–4 seats). Starting stack 100; blinds 1/2; fixed raise size 4.
 - **Sequential** betting: only `toAct` must act each tick; `isAlive` is true only for that seat.
 - Observation includes private `self.hole`, public `community`, `pot`, `currentBet`, `legal`, and masked rival holes (`??`) until showdown.
+- Invalid or `WAIT` on your turn → auto `CHECK`, else `CALL`, else `FOLD`.
+- Once nobody can bet (all remaining players all-in, or one player left with nothing to call), the remaining streets are dealt one per tick without asking anyone, then showdown. At `maxTicks` the rest of the board is dealt and hands are compared.
 - Score = remaining stack after the hand.
 
 ## Quoridor
