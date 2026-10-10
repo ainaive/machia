@@ -11,6 +11,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { BotStats, MatchReplay } from "./api";
 import { Board } from "./boards";
+import { FitToWidth } from "./FitToWidth";
 import { gameAccent } from "./gameAccent";
 import { RobotToken, playerColor } from "./sprites";
 
@@ -71,9 +72,9 @@ export function ReplayPlayer({
   return (
     <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
       <div className="flex min-w-0 flex-col items-start gap-5">
-        <div className="w-full overflow-auto pb-1">
+        <FitToWidth>
           <Board replay={replay} tickIndex={index} />
-        </div>
+        </FitToWidth>
 
         <div className="w-full max-w-[680px] space-y-3 rounded-md border border-ink/10 bg-paper/70 p-3 shadow-[0_12px_40px_-24px_rgba(26,31,22,0.5)] backdrop-blur-sm">
           <div className="relative h-2 overflow-hidden rounded-full bg-ink/10">
