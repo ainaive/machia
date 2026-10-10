@@ -12,6 +12,7 @@ import {
   createContest,
   enterContest,
   getContestDetail,
+  getEntryFiles,
   kickContestWorker,
   listContests,
   rerunFailedMatches,
@@ -222,14 +223,30 @@ app.post("/api/contests/:id/bot", async (c) => {
   }
 });
 
+app.get("/api/contests/:id/entries/:entryId/files", async (c) => {
+  try {
+    const viewer = await requireUser(c);
+    const files = await getEntryFiles(c.req.param("id"), c.req.param("entryId"), viewer);
+    return c.json(files);
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
 app.post("/api/contests/:id/entries/:entryId/approve", async (c) => {
   try {
     await requireAdmin(c);
-    const entry = await reviewEntry(
-      c.req.param("id"),
-      c.req.param("entryId"),
-      "approve",
-    );
+    let hash: string | undefined;
+    try {
+      hash = (await c.req.json<{ hash?: string }>()).hash;
+    } catch {
+      // empty body
+    }
+    const entry = await reviewEntry(c.req.param("id"), c.req.param("entryId"), {
+      action: "approve",
+      hash,
+    });
     return c.json({ entry });
   } catch (err) {
     const { message, status } = errorStatus(err);
@@ -247,12 +264,10 @@ app.post("/api/contests/:id/entries/:entryId/reject", async (c) => {
     } catch {
       // empty body
     }
-    const entry = await reviewEntry(
-      c.req.param("id"),
-      c.req.param("entryId"),
-      "reject",
+    const entry = await reviewEntry(c.req.param("id"), c.req.param("entryId"), {
+      action: "reject",
       reason,
-    );
+    });
     return c.json({ entry });
   } catch (err) {
     const { message, status } = errorStatus(err);

@@ -1,4 +1,5 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { MAX_BOT_UPLOAD_BYTES, type BotManifest } from "@machia/protocol";
 import { HttpError } from "./errors";
@@ -108,4 +109,27 @@ export async function writeBotFiles(
 
 export function botDirForEntry(uploadsRoot: string, userId: string, entryId: string): string {
   return path.join(uploadsRoot, userId, entryId);
+}
+
+export interface BotFile {
+  name: string;
+  content: string;
+}
+
+/** Content hash of a bot: every file's name and content, in name order. */
+export function hashBotFiles(files: BotFile[]): string {
+  const hash = createHash("sha256");
+  for (const file of [...files].sort((a, b) => (a.name < b.name ? -1 : 1))) {
+    hash.update(file.name).update("\0").update(file.content).update("\0");
+  }
+  return hash.digest("hex");
+}
+
+/** The files stored for an uploaded bot, in name order, with their hash. */
+export async function readBotFiles(dir: string): Promise<{ hash: string; files: BotFile[] }> {
+  const names = (await readdir(dir)).sort();
+  const files = await Promise.all(
+    names.map(async (name) => ({ name, content: await readFile(path.join(dir, name), "utf8") })),
+  );
+  return { hash: hashBotFiles(files), files };
 }

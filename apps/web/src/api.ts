@@ -235,10 +235,21 @@ export function submitContestBot(id: string, files: Record<string, string>) {
   });
 }
 
-export function approveEntry(contestId: string, entryId: string) {
+/** An uploaded bot's files, plus the hash that approving it requires. */
+export interface BotFiles {
+  hash: string;
+  files: Array<{ name: string; content: string }>;
+}
+
+export function fetchEntryFiles(contestId: string, entryId: string) {
+  return api<BotFiles>(`/api/contests/${contestId}/entries/${entryId}/files`);
+}
+
+/** Approves the exact files reviewed; fails with 409 if they changed since. */
+export function approveEntry(contestId: string, entryId: string, hash: string) {
   return api<{ entry: ContestEntry }>(
     `/api/contests/${contestId}/entries/${entryId}/approve`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify({ hash }) },
   );
 }
 
