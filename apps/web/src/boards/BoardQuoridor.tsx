@@ -126,10 +126,10 @@ export function BoardQuoridor({
             })}
           </div>
 
-          {walls.map((w, i) =>
+          {walls.map((w) =>
             w.orient === "H" ? (
               <div
-                key={`h-${i}-${w.x}-${w.y}`}
+                key={`h-${w.x}-${w.y}`}
                 className="absolute z-30 rounded-sm bg-[#3a2a18] shadow-sm"
                 style={{
                   left: w.x * cellPx + 1,
@@ -140,7 +140,7 @@ export function BoardQuoridor({
               />
             ) : (
               <div
-                key={`v-${i}-${w.x}-${w.y}`}
+                key={`v-${w.x}-${w.y}`}
                 className="absolute z-30 rounded-sm bg-[#3a2a18] shadow-sm"
                 style={{
                   left: (w.x + 1) * cellPx - wallT / 2,

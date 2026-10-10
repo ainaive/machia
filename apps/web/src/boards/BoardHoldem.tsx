@@ -61,7 +61,7 @@ export function BoardHoldem({
         {community.length === 0 ? (
           <span className="text-sm text-paper/50">等待公共牌…</span>
         ) : (
-          community.map((c, i) => <PlayingCard key={`${c}-${i}`} id={c} />)
+          community.map((c) => <PlayingCard key={c} id={c} />)
         )}
       </div>
 
@@ -94,6 +94,7 @@ export function BoardHoldem({
               </div>
               <div className="flex gap-1.5">
                 {visible.map((c, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: face-down cards are all "??"; the slot is the identity
                   <PlayingCard key={i} id={c} />
                 ))}
               </div>
