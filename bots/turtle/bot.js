@@ -4,8 +4,7 @@
 /**
  * Turtle: walk into the core ring, then orbit; BLOCK only when an attack is queued at us.
  */
-const readline = require("node:readline");
-const rl = readline.createInterface({ input: process.stdin });
+const { run } = require("../machia.js");
 
 function toward(from, to) {
   const dx = to.x - from.x;
@@ -61,34 +60,27 @@ function orbit(self, mid) {
   return dx >= 0 ? "MOVE_DOWN" : "MOVE_UP";
 }
 
-rl.on("line", (line) => {
-  let msg;
-  try {
-    msg = JSON.parse(line);
-  } catch {
-    return;
-  }
-  if (msg.type !== "observation") return;
+run({
+  act(msg) {
+    const self = msg.players.find((p) => p.id === msg.selfId);
+    if (!self || !self.alive) {
+      return "WAIT";
+    }
 
-  const self = msg.players.find((p) => p.id === msg.selfId);
-  if (!self || !self.alive) {
-    process.stdout.write(JSON.stringify({ action: "WAIT" }) + "\n");
-    return;
-  }
+    const mid = (msg.mapSize - 1) / 2;
+    const core = { x: mid, y: mid };
+    const dist = manhattan(self.pos, core);
 
-  const mid = (msg.mapSize - 1) / 2;
-  const core = { x: mid, y: mid };
-  const dist = manhattan(self.pos, core);
+    let action;
+    if (attackIncoming(msg, self)) {
+      action = "BLOCK";
+    } else if (dist > 2) {
+      action = toward(self.pos, core) || "WAIT";
+    } else {
+      // Keep moving on the core fringe so the demo isn't frozen
+      action = orbit(self, mid);
+    }
 
-  let action;
-  if (attackIncoming(msg, self)) {
-    action = "BLOCK";
-  } else if (dist > 2) {
-    action = toward(self.pos, core) || "WAIT";
-  } else {
-    // Keep moving on the core fringe so the demo isn't frozen
-    action = orbit(self, mid);
-  }
-
-  process.stdout.write(JSON.stringify({ action }) + "\n");
+    return action;
+  },
 });
