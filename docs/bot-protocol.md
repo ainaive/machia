@@ -23,6 +23,21 @@ bots/<bot-id>/
 
 `games` lists which games this bot supports. Omitted → defaults to `["arena"]`.
 
+### SDK
+
+[`bots/machia.js`](../bots/machia.js) handles the protocol for you: it parses messages, calls your `act(observation)` (sync or async), and writes exactly one reply per observation, in order, falling back to `WAIT` if `act` throws or returns nothing. Copy it next to your `bot.js`:
+
+```js
+const { run, log } = require("./machia.js");
+
+run({
+  act(obs) {
+    log("tick", obs.tick); // stderr only — stdout is for replies
+    return "WAIT";
+  },
+});
+```
+
 ## Practice vs contest
 
 - **Practice lobby** (`/games/:gameId`) loads sample bots from the server `bots/` directory. No account needed.
