@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   BomberEngine,
+  bomberPlugin,
   buildTiles,
   mapSizeForPlayers,
   spawnSlots,
@@ -133,5 +134,14 @@ describe("bomber basics", () => {
     expect(engine.players[0]!.alive).toBe(false);
     expect(engine.players[1]!.alive).toBe(false);
     expect(engine.finished).toBe(true);
+  });
+});
+
+describe("bomber seeding", () => {
+  test("the plugin seed fixes the map", () => {
+    const map = (seed: number) =>
+      (bomberPlugin.create({ playerCount: 2, seed }) as BomberEngine).tiles;
+    expect(map(42)).toEqual(map(42));
+    expect(map(42)).not.toEqual(map(43));
   });
 });

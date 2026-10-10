@@ -6,6 +6,7 @@ import type {
   PlayerResult,
   TickSnapshot,
 } from "@machia/game-api";
+import { createRandom } from "@machia/game-api";
 import {
   bestHand,
   cardId,
@@ -488,6 +489,7 @@ export const holdemPlugin: GamePlugin = {
   minPlayers: 2,
   maxPlayers: 4,
   create(config) {
-    return new HoldemEngine(config);
+    const random = config.seed === undefined ? undefined : createRandom(config.seed);
+    return new HoldemEngine(config, { random });
   },
 };

@@ -77,6 +77,10 @@ Write **exactly one line per observation**, in order. stdout is reserved for rep
 
 Do not reply. The bot is then sent `SIGTERM`; 500ms later it and any processes it started are killed with `SIGKILL`.
 
+### Randomness
+
+Every match runs from a 32-bit seed that the replay records as `seed`; the same seed and the same bot actions replay the same match (Bomber's soft walls and power-ups, Hold'em's deck). Bots are not told the seed.
+
 ---
 
 ## Arena

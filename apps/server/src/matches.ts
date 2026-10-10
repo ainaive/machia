@@ -88,7 +88,7 @@ function newMatchId(): string {
 export async function runPlayersMatch(
   gameId: string,
   players: MatchPlayerSpec[],
-  options?: { maxTicks?: number },
+  options?: { maxTicks?: number; seed?: number },
 ): Promise<MatchReplay> {
   const plugin = getGame(gameId);
   if (players.length < plugin.minPlayers || players.length > plugin.maxPlayers) {
@@ -103,6 +103,7 @@ export async function runPlayersMatch(
       gameId,
       players,
       maxTicks: options?.maxTicks,
+      seed: options?.seed,
     });
     await mkdir(REPLAYS_DIR, { recursive: true });
     await writeFile(

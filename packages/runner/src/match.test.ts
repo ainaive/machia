@@ -209,3 +209,34 @@ describe("runMatch quoridor", () => {
     expect(replay.mapSize).toBe(7);
   }, 25_000);
 });
+
+describe("runMatch seeding", () => {
+  // Answers WAIT every tick, which hold'em turns into check/call.
+  function passivePlayer() {
+    return {
+      botId: "echo-tick",
+      botDir: path.resolve(import.meta.dir, "../test-fixtures/echo-tick"),
+      manifest: { name: "Passive", runtime: "node" as const, entry: "bot.js" },
+    };
+  }
+
+  test("records the seed, and the same seed replays the same match", async () => {
+    const run = (seed?: number) =>
+      runMatch({
+        id: "seeded",
+        gameId: "holdem",
+        maxTicks: 40,
+        seed,
+        players: [passivePlayer(), passivePlayer()],
+      });
+    const a = await run(1234);
+    const b = await run(1234);
+    expect(a.seed).toBe(1234);
+    expect(b.ticks).toEqual(a.ticks);
+    expect(b.results).toEqual(a.results);
+
+    const fresh = await run();
+    expect(Number.isInteger(fresh.seed)).toBe(true);
+    expect(fresh.seed).toBeGreaterThanOrEqual(0);
+  }, 20_000);
+});

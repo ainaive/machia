@@ -7,6 +7,7 @@ import type {
   Position,
   TickSnapshot,
 } from "@machia/game-api";
+import { createRandom } from "@machia/game-api";
 
 export const BOMBER_ACTIONS = [
   "MOVE_UP",
@@ -543,6 +544,7 @@ export const bomberPlugin: GamePlugin = {
   minPlayers: 2,
   maxPlayers: 4,
   create(config) {
-    return new BomberEngine(config);
+    const random = config.seed === undefined ? undefined : createRandom(config.seed);
+    return new BomberEngine(config, { random });
   },
 };

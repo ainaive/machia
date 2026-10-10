@@ -19,6 +19,8 @@ export interface MatchReplay {
   ticks: TickSnapshot[];
   results: GameResult["results"];
   totalTicks: number;
+  /** Seed the game's randomness ran from; rerun with it to reproduce the match. */
+  seed: number;
 }
 
 export interface RunMatchOptions {
@@ -27,6 +29,8 @@ export interface RunMatchOptions {
   players: MatchPlayerSpec[];
   runner?: BotRunner;
   maxTicks?: number;
+  /** Defaults to a fresh random seed, which the replay records. */
+  seed?: number;
 }
 
 export async function runMatch(options: RunMatchOptions): Promise<MatchReplay> {
@@ -39,9 +43,11 @@ export async function runMatch(options: RunMatchOptions): Promise<MatchReplay> {
   }
 
   const runner = options.runner ?? new SubprocessRunner();
+  const seed = options.seed ?? randomSeed();
   const game = plugin.create({
     playerCount: n,
     maxTicks: options.maxTicks,
+    seed,
   });
 
   const handles: BotHandle[] = [];
@@ -93,10 +99,16 @@ export async function runMatch(options: RunMatchOptions): Promise<MatchReplay> {
       ticks,
       results: gameResult.results,
       totalTicks: gameResult.ticks,
+      seed,
     };
   } finally {
     await Promise.all(handles.map((h) => h.destroy()));
   }
+}
+
+/** A fresh 32-bit match seed. */
+export function randomSeed(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0]!;
 }
 
 export * from "./types";

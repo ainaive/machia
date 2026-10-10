@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { evaluateFive, bestHand, type Card } from "./cards";
-import type { TickSnapshot } from "@machia/game-api";
-import { HoldemEngine } from "./engine";
+import { createRandom, type TickSnapshot } from "@machia/game-api";
+import { HoldemEngine, holdemPlugin } from "./engine";
 
 function C(rank: Card["rank"], suit: Card["suit"]): Card {
   return { rank, suit };
@@ -80,7 +80,7 @@ describe("holdem engine", () => {
     for (let seed = 1; seed <= 20; seed++) {
       const eng = new HoldemEngine(
         { playerCount: 2, maxTicks: 200 },
-        { button: 0, random: seededRandom(seed) },
+        { button: 0, random: createRandom(seed) },
       );
       const events: Array<{ type: string; playerId?: number }> = [];
       let guard = 0;
@@ -113,7 +113,7 @@ describe("holdem engine", () => {
   test("all-in players are not asked to act", () => {
     const eng = new HoldemEngine(
       { playerCount: 2, maxTicks: 200 },
-      { button: 0, random: seededRandom(7) },
+      { button: 0, random: createRandom(7) },
     );
     let guard = 0;
     while (!eng.seats.every((s) => s.allIn) && guard++ < 100) {
@@ -130,7 +130,7 @@ describe("holdem engine", () => {
   test("a showdown forced by maxTicks deals the full board", () => {
     const eng = new HoldemEngine(
       { playerCount: 2, maxTicks: 2 },
-      { button: 0, random: seededRandom(3) },
+      { button: 0, random: createRandom(3) },
     );
     let last: TickSnapshot | undefined;
     while (!eng.finished) {
@@ -153,15 +153,13 @@ describe("holdem engine", () => {
     expect(final.pot).toBe(0);
     expect(final.players.map((p) => p.stack)).toEqual(eng.seats.map((s) => s.stack));
   });
-});
 
-/** Small deterministic PRNG (mulberry32) so deals are reproducible. */
-function seededRandom(seed: number): () => number {
-  let t = seed >>> 0;
-  return () => {
-    t = (t + 0x6d2b79f5) >>> 0;
-    let r = Math.imul(t ^ (t >>> 15), 1 | t);
-    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-}
+  test("the plugin seed fixes the deal", () => {
+    const deal = (seed: number) =>
+      (holdemPlugin.create({ playerCount: 2, seed }) as HoldemEngine).seats.map((s) =>
+        s.hole.map((c) => `${c.rank}${c.suit}`),
+      );
+    expect(deal(42)).toEqual(deal(42));
+    expect(deal(42)).not.toEqual(deal(43));
+  });
+});
