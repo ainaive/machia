@@ -8,6 +8,11 @@ export interface MatchPlayerSpec {
   botId: string;
   botDir: string;
   manifest: BotManifest;
+  /**
+   * What a sandbox exposes to the bot (read-only); must contain botDir.
+   * Defaults to botDir. Sample bots use bots/ so they can load shared helpers.
+   */
+  mountDir?: string;
 }
 
 export interface MatchReplay {
@@ -59,6 +64,7 @@ export async function runMatch(options: RunMatchOptions): Promise<MatchReplay> {
         botId: spec.botId,
         botDir: spec.botDir,
         manifest: spec.manifest,
+        mountDir: spec.mountDir,
       });
       handles.push(handle);
       await handle.sendStart({
@@ -114,5 +120,12 @@ export function randomSeed(): number {
 
 export * from "./types";
 export { SubprocessRunner } from "./subprocess";
+export {
+  BwrapSandbox,
+  DEFAULT_SANDBOX_LIMITS,
+  SANDBOX_APP_DIR,
+  detectDelegatedCgroup,
+  type SandboxLimits,
+} from "./sandbox";
 export { listGames, getGame } from "./registry";
 export { packBot } from "./pack";

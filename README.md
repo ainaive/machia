@@ -38,6 +38,7 @@ bun run dev
 | `MACHIA_ADMIN_EMAIL` / `_USERNAME` / `_PASSWORD` | — | 启动时种子管理员 |
 | `MACHIA_DB` | `data/machia.db` | SQLite 路径 |
 | `MACHIA_UPLOADS_DIR` | `data/uploads` | 参赛 Bot 存放目录 |
+| `MACHIA_SANDBOX` | `off` | `bwrap`：Bot 在沙箱中运行（生产 unit 默认开启，见 deploy.md） |
 | `MACHIA_BACKUP_DIR` / `_KEEP` / `MACHIA_REPLAY_DAYS` | `data/backups` / `14` / `30` | 每日维护：数据库与上传备份、保留份数、练习回放保留天数（见 deploy.md） |
 | `MACHIA_REPLAYS_DIR` | `data/replays` | 对局回放目录（`bun test` 会自动指向临时目录） |
 | `MACHIA_CONTEST_MAX_TICKS` | 各游戏默认 | 赛事对局最大回合数 |
@@ -69,7 +70,7 @@ bun run dev
 
 生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。VPS 部署（nginx `:3000` TLS + loopback API）见 [docs/deploy.md](docs/deploy.md)。
 
-**信任模型：** 参赛 Bot 以 Node 子进程运行，第一期没有隔离沙箱。Bot 拿不到服务器环境变量（密钥等），但与 API 同属一个系统用户（生产为非 root 的 `machia`），仍能读取 `data/`。只在可信参赛者 / 自托管场景开赛。
+**信任模型：** 生产环境（`MACHIA_SANDBOX=bwrap`）中每个 Bot 都在 bubblewrap 沙箱里运行：无网络，只能看到自己的目录（只读），每个 Bot 限 256MB 内存、32 个进程/线程、1 个 CPU，读不到 `data/` 和其他参赛者的文件。本地开发默认不开沙箱，Bot 是普通子进程。部署要求见 [docs/deploy.md](docs/deploy.md#bot-sandbox)。
 
 ## 仓库结构
 

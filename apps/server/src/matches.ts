@@ -5,6 +5,7 @@ import {
   getGame,
   listGames,
   runMatch,
+  type BotRunner,
   type MatchPlayerSpec,
   type MatchReplay,
 } from "@machia/runner";
@@ -25,6 +26,12 @@ export interface BotInfo {
 }
 
 let running = false;
+let botRunner: BotRunner | undefined;
+
+/** Runner for every match (e.g. a sandboxed one, set at boot); default: plain child processes. */
+export function setBotRunner(runner: BotRunner | undefined): void {
+  botRunner = runner;
+}
 
 export function isMatchRunning(): boolean {
   return running;
@@ -105,6 +112,7 @@ export async function runPlayersMatch(
     players,
     maxTicks: options?.maxTicks,
     seed: options?.seed,
+    runner: botRunner,
   });
   await mkdir(replaysDir(), { recursive: true });
   await writeFile(
@@ -125,6 +133,8 @@ export async function startMatch(
     players.push({
       botId: bot.id,
       botDir: bot.dir,
+      // Sample bots share helpers (../machia.js, ../<game>-lib.js) in bots/.
+      mountDir: BOTS_DIR,
       manifest: {
         name: bot.name,
         runtime: "node" as const,
