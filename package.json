@@ -8,7 +8,7 @@
     "dev:web": "bun run --filter @machia/web dev",
     "match": "bun run packages/runner/src/cli.ts",
     "pack": "bun run packages/runner/src/pack.ts",
-    "test": "bun test packages/engine packages/games-bomber packages/games-tanks packages/games-sokoban packages/games-holdem packages/games-quoridor packages/runner apps/server",
+    "test": "bun test packages/engine packages/games-bomber packages/games-tanks packages/games-sokoban packages/games-holdem packages/games-quoridor packages/runner apps/server apps/web",
     "typecheck": "bun run --filter '*' typecheck",
     "build:web": "bun run --filter @machia/web build",
     "check": "bun run typecheck && bun test && bun run build:web"
