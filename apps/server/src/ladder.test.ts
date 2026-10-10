@@ -8,6 +8,7 @@ import { app } from "./index";
 import {
   INITIAL_RATING,
   K_FACTOR,
+  PERIOD_GAMES_CAP,
   expectedScore,
   ratePeriod,
   type LadderRow,
@@ -54,6 +55,44 @@ describe("Elo", () => {
     for (const id of ["x", "y", "z"]) expect(forward.get(id)).toBeCloseTo(backward.get(id)!);
     const total = [...forward.values()].reduce((sum, r) => sum + r, 0);
     expect(total).toBeCloseTo(1550 + 2 * INITIAL_RATING);
+  });
+
+  /** A contest's double round-robin among p0..p(n-1); `scoreA(i, j)` is p_i's score against p_j. */
+  function roundRobin(n: number, scoreA: (i: number, j: number) => number): RatedGame[] {
+    const games: RatedGame[] = [];
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        games.push({ a: `p${i}`, b: `p${j}`, scoreA: scoreA(i, j) });
+        games.push({ a: `p${j}`, b: `p${i}`, scoreA: 1 - scoreA(i, j) });
+      }
+    }
+    return games;
+  }
+
+  test("a big contest counts for at most PERIOD_GAMES_CAP games, and stays zero-sum", () => {
+    // 24 entries: 46 games each. p0 wins all of them; everyone else draws.
+    const ratings = new Map<string, number>();
+    ratePeriod(ratings, roundRobin(24, (i) => (i === 0 ? 1 : 0.5)));
+    expect(ratings.get("p0")).toBeCloseTo(INITIAL_RATING + (PERIOD_GAMES_CAP * K_FACTOR) / 2);
+    const total = [...ratings.values()].reduce((sum, r) => sum + r, 0);
+    expect(total).toBeCloseTo(24 * INITIAL_RATING);
+  });
+
+  test("repeated big round-robins settle a gap instead of swinging it", () => {
+    for (const n of [11, 24, 40]) {
+      const ratings = new Map<string, number>();
+      ratePeriod(ratings, roundRobin(n, (i, j) => (i === 0 && j === 1 ? 1 : 0.5)));
+      let gap = ratings.get("p0")! - ratings.get("p1")!;
+      expect(gap).toBeGreaterThan(0);
+      // Every game after that is a draw: p0's lead should shrink toward 0, never flip.
+      for (let contest = 0; contest < 4; contest++) {
+        ratePeriod(ratings, roundRobin(n, () => 0.5));
+        const next = ratings.get("p0")! - ratings.get("p1")!;
+        expect(next).toBeGreaterThan(0);
+        expect(next).toBeLessThan(gap);
+        gap = next;
+      }
+    }
   });
 });
 

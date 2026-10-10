@@ -8,6 +8,14 @@
  * rated in the order they started: a rerun finishes a contest again, later,
  * but doesn't move it after the contests that came after it.
  *
+ * Because every game in a period is scored from the same starting ratings,
+ * one contest moves a rating by K × games × (slope of the expected score).
+ * In a big round-robin that step overshoots: from 11 entries a 64-point gap
+ * followed by an all-draw contest flips sign, and from about 22 entries the
+ * swings grow with every contest. So a contest counts for at most
+ * PERIOD_GAMES_CAP games: in bigger ones each game's K shrinks to match,
+ * which keeps one contest's correction to about 0.8 of a gap or less.
+ *
  * Ratings are recomputed from contest results on each request rather than
  * stored, so a rerun game or a corrected result is always reflected.
  * Practice matches don't count: anyone can run them with any bots.
@@ -18,6 +26,8 @@ import { HttpError } from "./errors";
 
 export const INITIAL_RATING = 1500;
 export const K_FACTOR = 32;
+/** A contest moves ratings at most as much as this many games at K_FACTOR would. */
+export const PERIOD_GAMES_CAP = 16;
 
 /** One game between two players; `scoreA` is 1 (A won), 0.5 (draw) or 0. */
 export interface RatedGame {
@@ -31,12 +41,23 @@ export function expectedScore(rating: number, opponent: number): number {
   return 1 / (1 + 10 ** ((opponent - rating) / 400));
 }
 
-/** Applies one rating period to `ratings` (missing players start at INITIAL_RATING). */
+/**
+ * Applies one rating period to `ratings` (missing players start at INITIAL_RATING).
+ * One K for the whole period, from the most games any player played in it,
+ * keeps it zero-sum even when failed games leave players with uneven counts.
+ */
 export function ratePeriod(ratings: Map<string, number>, games: RatedGame[]): void {
   const before = (id: string) => ratings.get(id) ?? INITIAL_RATING;
+  const played = new Map<string, number>();
+  for (const game of games) {
+    played.set(game.a, (played.get(game.a) ?? 0) + 1);
+    played.set(game.b, (played.get(game.b) ?? 0) + 1);
+  }
+  const most = Math.max(0, ...played.values());
+  const k = K_FACTOR * Math.min(1, PERIOD_GAMES_CAP / most);
   const change = new Map<string, number>();
   for (const game of games) {
-    const delta = K_FACTOR * (game.scoreA - expectedScore(before(game.a), before(game.b)));
+    const delta = k * (game.scoreA - expectedScore(before(game.a), before(game.b)));
     change.set(game.a, (change.get(game.a) ?? 0) + delta);
     change.set(game.b, (change.get(game.b) ?? 0) - delta);
   }
