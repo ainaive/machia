@@ -5,10 +5,12 @@ import {
   approveEntry,
   fetchContest,
   rejectEntry,
+  rerunFailedMatches,
   startContest,
   submitContestBot,
   type ContestDetail,
   type ContestEntry,
+  type ContestMatch,
 } from "../api";
 import { useAuth } from "../auth";
 import { RulesPanel } from "../RulesPanel";
@@ -23,6 +25,21 @@ const STATUS_LABEL = {
   approved: "已通过",
   rejected: "已拒绝",
 } as const;
+
+const MATCH_STATUS_LABEL: Record<string, string> = {
+  pending: "等待",
+  running: "进行中",
+  done: "完成",
+  error: "出错",
+};
+
+function matchResult(entries: ContestEntry[], m: ContestMatch): string {
+  if (m.status !== "done") return "";
+  const score = `${(m.scoreA ?? 0).toFixed(1)} : ${(m.scoreB ?? 0).toFixed(1)}`;
+  if (!m.winnerEntryId) return `平局 · ${score}`;
+  const winner = entries.find((e) => e.id === m.winnerEntryId)?.username ?? "?";
+  return `${winner} 胜 · ${score}`;
+}
 
 async function readSelectedFiles(list: FileList | null): Promise<Record<string, string>> {
   if (!list || list.length === 0) {
@@ -131,6 +148,7 @@ export function ContestDetailPage() {
 
   const { contest, game, entries, myEntry, matches, standings } = detail;
   const approvedCount = entries.filter((e) => e.status === "approved").length;
+  const failedCount = matches.filter((m) => m.status === "error").length;
   const canUpload =
     contest.status === "open" &&
     user &&
@@ -309,7 +327,10 @@ export function ContestDetailPage() {
                 </table>
               </div>
               <div>
-                <h3 className="mb-3 font-display text-xl font-bold">对阵</h3>
+                <h3 className="mb-1 font-display text-xl font-bold">对阵</h3>
+                <p className="mb-3 text-xs text-ink/50">
+                  每对打两局：先列出的一方坐 0 号位，第二局交换座位，两局使用同一随机种子。
+                </p>
                 <ul className="space-y-2">
                   {matches.map((m) => (
                     <li
@@ -319,7 +340,12 @@ export function ContestDetailPage() {
                       <span>
                         {entryLabel(entries, m.entryAId)} vs{" "}
                         {entryLabel(entries, m.entryBId)}
-                        <span className="ml-2 text-ink/45">{m.status}</span>
+                        <span className="ml-2 text-ink/45">
+                          {MATCH_STATUS_LABEL[m.status] ?? m.status}
+                        </span>
+                        {m.status === "done" && (
+                          <span className="ml-2 font-medium">{matchResult(entries, m)}</span>
+                        )}
                         {m.error ? ` · ${m.error}` : ""}
                       </span>
                       {m.matchId && (
@@ -349,6 +375,18 @@ export function ContestDetailPage() {
               className="w-full rounded-md bg-clay px-4 py-3 font-display font-bold text-paper shadow-[0_8px_24px_-8px_rgba(196,92,38,0.55)] disabled:opacity-40"
             >
               {busy === "start" ? "开赛中…" : "开始循环赛"}
+            </button>
+          )}
+          {user?.role === "admin" && failedCount > 0 && (
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() =>
+                void wrap("rerun", () => rerunFailedMatches(contest.id))
+              }
+              className="w-full rounded-md border border-clay/50 px-4 py-2 text-sm font-medium text-clay disabled:opacity-40"
+            >
+              {busy === "rerun" ? "重跑中…" : `重跑失败对局（${failedCount}）`}
             </button>
           )}
           <p className="text-xs text-ink/50">

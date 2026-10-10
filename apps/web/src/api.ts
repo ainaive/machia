@@ -245,3 +245,7 @@ export function rejectEntry(contestId: string, entryId: string, reason: string) 
 export function startContest(id: string) {
   return api<ContestDetail>(`/api/contests/${id}/start`, { method: "POST" });
 }
+
+export function rerunFailedMatches(id: string) {
+  return api<ContestDetail>(`/api/contests/${id}/rerun-failed`, { method: "POST" });
+}
