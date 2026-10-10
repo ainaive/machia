@@ -190,6 +190,14 @@ export class HoldemEngine implements GameInstance {
       if (s.id !== this.toAct) executed[s.id] ??= "WAIT";
     }
 
+    if (this.tick + 1 >= this.maxTicks && this.street !== "done") {
+      // Out of time: deal the rest of the board and compare hands before the
+      // snapshot, so the replay's final frame shows the run-out and payout.
+      this.dealRestOfBoard(events);
+      this.payoutShowdown(events);
+      this.street = "done";
+    }
+
     const snapshot: TickSnapshot = {
       tick: this.tick,
       executed,
@@ -213,16 +221,7 @@ export class HoldemEngine implements GameInstance {
     };
 
     this.tick += 1;
-    if (this.tick >= this.maxTicks && !this.finished) {
-      if (this.street !== "done") {
-        // Out of time: deal the rest of the board, then compare hands.
-        this.dealRestOfBoard(events);
-        this.payoutShowdown(events);
-        this.street = "done";
-      }
-      this.finished = true;
-    }
-    if (this.street === "done") this.finished = true;
+    if (this.tick >= this.maxTicks || this.street === "done") this.finished = true;
 
     return snapshot;
   }

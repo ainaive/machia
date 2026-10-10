@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { evaluateFive, bestHand, type Card } from "./cards";
+import type { TickSnapshot } from "@machia/game-api";
 import { HoldemEngine } from "./engine";
 
 function C(rank: Card["rank"], suit: Card["suit"]): Card {
@@ -131,13 +132,26 @@ describe("holdem engine", () => {
       { playerCount: 2, maxTicks: 2 },
       { button: 0, random: seededRandom(3) },
     );
+    let last: TickSnapshot | undefined;
     while (!eng.finished) {
       const id = eng.toAct;
       const legal = eng.observation(id).legal as string[];
-      eng.step({ [id]: legal.includes("CHECK") ? "CHECK" : "CALL" });
+      last = eng.step({ [id]: legal.includes("CHECK") ? "CHECK" : "CALL" });
     }
     expect(eng.community).toHaveLength(5);
     expect(eng.seats[0]!.stack + eng.seats[1]!.stack).toBe(200);
+
+    // The replay's final frame must show the run-out and the payout.
+    const final = last as TickSnapshot & {
+      street: string;
+      pot: number;
+      community: string[];
+      players: Array<{ stack: number }>;
+    };
+    expect(final.street).toBe("done");
+    expect(final.community).toHaveLength(5);
+    expect(final.pot).toBe(0);
+    expect(final.players.map((p) => p.stack)).toEqual(eng.seats.map((s) => s.stack));
   });
 });
 
