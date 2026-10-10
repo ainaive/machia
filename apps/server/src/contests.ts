@@ -2,7 +2,7 @@ import path from "node:path";
 import type { Database } from "bun:sqlite";
 import { getGame, randomSeed, type MatchPlayerSpec } from "@machia/runner";
 import type { PublicUser } from "./auth";
-import { botDirForEntry, parseBotFiles, writeBotFiles } from "./botFiles";
+import { botDirForEntry, parseBotFiles, readBotFiles, writeBotFiles } from "./botFiles";
 import { defaultUploadsDir, getDb } from "./db";
 import { HttpError } from "./errors";
 import { newId } from "./ids";
@@ -267,45 +267,55 @@ export async function enterContest(contestId: string, user: PublicUser) {
   return publicEntry(entry);
 }
 
+// Uploads and approvals of one entry run one at a time, so an approval
+// can't check the reviewed files and then mark the entry approved after an
+// upload replaced them in between. In-memory: the API is one process.
+const entryLocks = new Map<string, Promise<unknown>>();
+
+async function withEntryLock<T>(entryId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = entryLocks.get(entryId) ?? Promise.resolve();
+  const run = prev.then(fn);
+  const tail = run.catch(() => undefined);
+  entryLocks.set(entryId, tail);
+  try {
+    return await run;
+  } finally {
+    if (entryLocks.get(entryId) === tail) entryLocks.delete(entryId);
+  }
+}
+
 export async function submitBot(
   contestId: string,
   user: PublicUser,
   files: Record<string, string>,
 ) {
   const contest = await contestById(contestId);
-  const entry = await getOrCreateEntry(contestId, user);
-  if (entry.status === "approved") {
-    throw new HttpError(409, "Approved bot cannot be changed");
-  }
-  const parsed = parseBotFiles(files, contest.game_id);
-  const dir = botDirForEntry(defaultUploadsDir(), user.id, entry.id);
-  await writeBotFiles(dir, parsed.files);
-  const db = await getDb();
-  const now = new Date().toISOString();
-  db.run(
-    `UPDATE entries
-     SET status = 'pending', bot_name = ?, reject_reason = NULL, updated_at = ?
-     WHERE id = ?`,
-    [parsed.manifest.name, now, entry.id],
-  );
-  const updated = db
-    .query<EntryRow, [string]>(
-      `SELECT e.*, u.username FROM entries e JOIN users u ON u.id = e.user_id WHERE e.id = ?`,
-    )
-    .get(entry.id)!;
-  return publicEntry(updated);
+  const created = await getOrCreateEntry(contestId, user);
+  return withEntryLock(created.id, async () => {
+    // Re-read under the lock: an approval may have finished meanwhile.
+    const entry = await contestEntry(contestId, created.id);
+    if (entry.status === "approved") {
+      throw new HttpError(409, "Approved bot cannot be changed");
+    }
+    const parsed = parseBotFiles(files, contest.game_id);
+    const dir = botDirForEntry(defaultUploadsDir(), user.id, entry.id);
+    await writeBotFiles(dir, parsed.files);
+    const db = await getDb();
+    db.run(
+      `UPDATE entries
+       SET status = 'pending', bot_name = ?, reject_reason = NULL, updated_at = ?
+       WHERE id = ?`,
+      [parsed.manifest.name, new Date().toISOString(), entry.id],
+    );
+    return publicEntry(await contestEntry(contestId, entry.id));
+  });
 }
 
-export async function reviewEntry(
-  contestId: string,
-  entryId: string,
-  action: "approve" | "reject",
-  reason?: string,
-) {
-  const contest = await contestById(contestId);
-  if (contest.status !== "open") {
-    throw new HttpError(409, "Can only review entries while the contest is open");
-  }
+export type ReviewDecision =
+  | { action: "approve"; hash?: string }
+  | { action: "reject"; reason?: string };
+
+async function contestEntry(contestId: string, entryId: string): Promise<EntryRow> {
   const db = await getDb();
   const entry = db
     .query<EntryRow, [string, string]>(
@@ -316,29 +326,56 @@ export async function reviewEntry(
     )
     .get(entryId, contestId);
   if (!entry) throw new HttpError(404, "Entry not found");
+  return entry;
+}
 
-  if (action === "approve") {
-    if (!entry.bot_name) {
-      throw new HttpError(400, "Cannot approve an entry without a bot");
-    }
-    db.run(
-      `UPDATE entries SET status = 'approved', reject_reason = NULL, updated_at = ? WHERE id = ?`,
-      [new Date().toISOString(), entryId],
-    );
-  } else {
-    const why = (reason ?? "").trim();
-    if (!why) throw new HttpError(400, "Reject reason is required");
-    db.run(
-      `UPDATE entries SET status = 'rejected', reject_reason = ?, updated_at = ? WHERE id = ?`,
-      [why, new Date().toISOString(), entryId],
-    );
+/** An entry's uploaded files and their hash, for admins and the bot's owner. */
+export async function getEntryFiles(contestId: string, entryId: string, viewer: PublicUser) {
+  await contestById(contestId);
+  const entry = await contestEntry(contestId, entryId);
+  if (viewer.role !== "admin" && viewer.id !== entry.user_id) {
+    throw new HttpError(403, "Only admins and the bot's owner can read its files");
   }
-  const updated = db
-    .query<EntryRow, [string]>(
-      `SELECT e.*, u.username FROM entries e JOIN users u ON u.id = e.user_id WHERE e.id = ?`,
-    )
-    .get(entryId)!;
-  return publicEntry(updated);
+  if (!entry.bot_name) throw new HttpError(404, "No bot uploaded yet");
+  return readBotFiles(botDirForEntry(defaultUploadsDir(), entry.user_id, entry.id));
+}
+
+export async function reviewEntry(contestId: string, entryId: string, decision: ReviewDecision) {
+  const contest = await contestById(contestId);
+  if (contest.status !== "open") {
+    throw new HttpError(409, "Can only review entries while the contest is open");
+  }
+  const db = await getDb();
+  return withEntryLock(entryId, async () => {
+    const entry = await contestEntry(contestId, entryId);
+    if (decision.action === "approve") {
+      if (!entry.bot_name) {
+        throw new HttpError(400, "Cannot approve an entry without a bot");
+      }
+      // Approval is for the exact code the admin read: the files' hash must
+      // still match, or the owner re-uploaded after the review.
+      if (!decision.hash) {
+        throw new HttpError(400, "Approve with the hash of the files you reviewed");
+      }
+      const dir = botDirForEntry(defaultUploadsDir(), entry.user_id, entry.id);
+      const current = await readBotFiles(dir);
+      if (current.hash !== decision.hash) {
+        throw new HttpError(409, "The bot changed after you reviewed it; review it again");
+      }
+      db.run(
+        `UPDATE entries SET status = 'approved', reject_reason = NULL, updated_at = ? WHERE id = ?`,
+        [new Date().toISOString(), entryId],
+      );
+    } else {
+      const why = (decision.reason ?? "").trim();
+      if (!why) throw new HttpError(400, "Reject reason is required");
+      db.run(
+        `UPDATE entries SET status = 'rejected', reject_reason = ?, updated_at = ? WHERE id = ?`,
+        [why, new Date().toISOString(), entryId],
+      );
+    }
+    return publicEntry(await contestEntry(contestId, entryId));
+  });
 }
 
 export async function startContest(contestId: string) {

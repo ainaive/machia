@@ -232,6 +232,10 @@ describe("runMatch seeding", () => {
     const a = await run(1234);
     const b = await run(1234);
     expect(a.seed).toBe(1234);
+    expect(a.players.map((p) => p.stats)).toEqual([
+      { timeouts: 0, invalidReplies: 0, crashed: false },
+      { timeouts: 0, invalidReplies: 0, crashed: false },
+    ]);
     expect(b.ticks).toEqual(a.ticks);
     expect(b.results).toEqual(a.results);
 

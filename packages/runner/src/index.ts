@@ -2,7 +2,7 @@ import type { GameResult, TickSnapshot } from "@machia/game-api";
 import type { BotManifest } from "@machia/protocol";
 import { getGame } from "./registry";
 import { SubprocessRunner } from "./subprocess";
-import type { BotHandle, BotRunner } from "./types";
+import type { BotHandle, BotRunner, BotStats } from "./types";
 
 export interface MatchPlayerSpec {
   botId: string;
@@ -15,7 +15,7 @@ export interface MatchReplay {
   gameId: string;
   createdAt: string;
   mapSize: number;
-  players: Array<{ playerId: number; botId: string; name: string }>;
+  players: Array<{ playerId: number; botId: string; name: string; stats: BotStats }>;
   ticks: TickSnapshot[];
   results: GameResult["results"];
   totalTicks: number;
@@ -95,6 +95,7 @@ export async function runMatch(options: RunMatchOptions): Promise<MatchReplay> {
         playerId: h.playerId,
         botId: h.botId,
         name: h.name,
+        stats: h.stats(),
       })),
       ticks,
       results: gameResult.results,
@@ -114,3 +115,4 @@ export function randomSeed(): number {
 export * from "./types";
 export { SubprocessRunner } from "./subprocess";
 export { listGames, getGame } from "./registry";
+export { packBot } from "./pack";

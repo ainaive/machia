@@ -5,8 +5,7 @@
  * Scout: keeps moving with short directional streaks (no random ATTACK/BLOCK spam).
  * Looks like purposeful roaming toward/around the map.
  */
-const readline = require("node:readline");
-const rl = readline.createInterface({ input: process.stdin });
+const { run } = require("../machia.js");
 
 const MOVES = ["MOVE_UP", "MOVE_DOWN", "MOVE_LEFT", "MOVE_RIGHT"];
 let streakDir = null;
@@ -34,39 +33,32 @@ function applyMove(pos, action, mapSize) {
   return next;
 }
 
-rl.on("line", (line) => {
-  let msg;
-  try {
-    msg = JSON.parse(line);
-  } catch {
-    return;
-  }
-  if (msg.type !== "observation") return;
-
-  const self = msg.players.find((p) => p.id === msg.selfId);
-  if (!self || !self.alive) {
-    process.stdout.write(JSON.stringify({ action: "WAIT" }) + "\n");
-    return;
-  }
-
-  const mid = (msg.mapSize - 1) / 2;
-  // Bias toward core so scouts eventually meet others
-  const target = {
-    x: mid + Math.round((Math.random() - 0.5) * 4),
-    y: mid + Math.round((Math.random() - 0.5) * 4),
-  };
-
-  if (streakLeft <= 0 || !streakDir || !applyMove(self.pos, streakDir, msg.mapSize)) {
-    streakDir =
-      Math.random() < 0.55
-        ? toward(self.pos, target) || MOVES[Math.floor(Math.random() * 4)]
-        : MOVES[Math.floor(Math.random() * 4)];
-    if (!applyMove(self.pos, streakDir, msg.mapSize)) {
-      streakDir = MOVES.find((m) => applyMove(self.pos, m, msg.mapSize)) || "WAIT";
+run({
+  act(msg) {
+    const self = msg.players.find((p) => p.id === msg.selfId);
+    if (!self || !self.alive) {
+      return "WAIT";
     }
-    streakLeft = 3 + Math.floor(Math.random() * 4);
-  }
 
-  streakLeft -= 1;
-  process.stdout.write(JSON.stringify({ action: streakDir }) + "\n");
+    const mid = (msg.mapSize - 1) / 2;
+    // Bias toward core so scouts eventually meet others
+    const target = {
+      x: mid + Math.round((Math.random() - 0.5) * 4),
+      y: mid + Math.round((Math.random() - 0.5) * 4),
+    };
+
+    if (streakLeft <= 0 || !streakDir || !applyMove(self.pos, streakDir, msg.mapSize)) {
+      streakDir =
+        Math.random() < 0.55
+          ? toward(self.pos, target) || MOVES[Math.floor(Math.random() * 4)]
+          : MOVES[Math.floor(Math.random() * 4)];
+      if (!applyMove(self.pos, streakDir, msg.mapSize)) {
+        streakDir = MOVES.find((m) => applyMove(self.pos, m, msg.mapSize)) || "WAIT";
+      }
+      streakLeft = 3 + Math.floor(Math.random() * 4);
+    }
+
+    streakLeft -= 1;
+    return streakDir;
+  },
 });

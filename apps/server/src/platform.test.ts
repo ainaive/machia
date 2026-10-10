@@ -1,11 +1,20 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { packBot } from "@machia/runner";
 import { app } from "./index";
+import * as botFiles from "./botFiles";
 import { parseBotFiles } from "./botFiles";
 import { resetDatabase, closeDatabase } from "./db";
-import { startContest, waitForContestWorkerIdle } from "./contests";
+import {
+  getEntryFiles,
+  reviewEntry,
+  startContest,
+  submitBot,
+  waitForContestWorkerIdle,
+} from "./contests";
+import type { PublicUser } from "./auth";
 import { HttpError } from "./errors";
 import { setMailSink } from "./mail";
 
@@ -125,6 +134,18 @@ async function register(
   return { status: raw.status, cookie: raw.headers.get("set-cookie") ? cookieFrom(raw) : "", body };
 }
 
+/** Approves the way the UI does: read the bot's files, then approve that exact version. */
+async function approveEntry(contestId: string, entryId: string, adminCookie: string) {
+  const files = await json(`/api/contests/${contestId}/entries/${entryId}/files`, {
+    cookie: adminCookie,
+  });
+  return json(`/api/contests/${contestId}/entries/${entryId}/approve`, {
+    method: "POST",
+    cookie: adminCookie,
+    body: JSON.stringify({ hash: files.body.hash }),
+  });
+}
+
 /** An arena contest with two approved WAIT bots, ready to start. */
 async function readyContest(adminCookie: string, rival = "bob") {
   const bob = await register(rival);
@@ -144,10 +165,7 @@ async function readyContest(adminCookie: string, rival = "bob") {
       body: JSON.stringify({ files: arenaFiles(name) }),
     });
     const entryId = (up.body.entry as { id: string }).id;
-    await json(`/api/contests/${contestId}/entries/${entryId}/approve`, {
-      method: "POST",
-      cookie: adminCookie,
-    });
+    await approveEntry(contestId, entryId, adminCookie);
   }
   return contestId;
 }
@@ -222,6 +240,66 @@ describe("bot file validation", () => {
         "arena",
       ),
     ).toThrow(/games must be an array/);
+  });
+
+  test("rejects code that loads files missing from the upload", () => {
+    const manifest = JSON.stringify({ name: "X", runtime: "node", entry: "bot.js", games: ["arena"] });
+    // A raw sample bot needs ../machia.js, which is outside the upload.
+    const sample = readFileSync(path.resolve(import.meta.dir, "../../../bots/turtle/bot.js"), "utf8");
+    expect(() => parseBotFiles({ "manifest.json": manifest, "bot.js": sample }, "arena")).toThrow(
+      /\.\.\/machia\.js.*bun run pack/,
+    );
+    const usesHelper = `const h = require("./helper");\n${WAIT_BOT}`;
+    expect(() => parseBotFiles({ "manifest.json": manifest, "bot.js": usesHelper }, "arena")).toThrow(
+      /"\.\/helper".*not uploaded/,
+    );
+    expect(
+      parseBotFiles(
+        { "manifest.json": manifest, "bot.js": usesHelper, "helper.js": "module.exports = {};" },
+        "arena",
+      ).files["helper.js"],
+    ).toBeDefined();
+  });
+
+  test("only actual imports count, not comments or strings", () => {
+    const manifest = JSON.stringify({ name: "X", runtime: "node", entry: "bot.js", games: ["arena"] });
+    const mentions = [
+      '// previously require("../helper.js")',
+      '/* import x from "../old.js" */',
+      'const note = "see require(\'./nope\')";',
+      WAIT_BOT,
+    ].join("\n");
+    expect(parseBotFiles({ "manifest.json": manifest, "bot.js": mentions }, "arena").files["bot.js"]).toBe(
+      mentions,
+    );
+    expect(() =>
+      parseBotFiles({ "manifest.json": manifest, "bot.js": "const = ;" }, "arena"),
+    ).toThrow(/could not be parsed/);
+    const shebang = `#!/usr/bin/env node\n${WAIT_BOT}`;
+    expect(parseBotFiles({ "manifest.json": manifest, "bot.js": shebang }, "arena").files["bot.js"]).toBe(
+      shebang,
+    );
+  });
+
+  test("the approval hash tells file boundaries apart", () => {
+    // NUL-joined fields made these two different uploads hash the same.
+    const oneFile = [{ name: "bot.js", content: "A\0helper.js\0B" }];
+    const twoFiles = [
+      { name: "bot.js", content: "A" },
+      { name: "helper.js", content: "B" },
+    ];
+    expect(botFiles.hashBotFiles(oneFile)).not.toBe(botFiles.hashBotFiles(twoFiles));
+  });
+
+  test("accepts a sample bot once it is packed", async () => {
+    const out = mkdtempSync(path.join(tmpdir(), "machia-pack-"));
+    await packBot(path.resolve(import.meta.dir, "../../../bots/quoridor-blocker"), out);
+    const files = Object.fromEntries(
+      ["manifest.json", "bot.js"].map((name) => [name, readFileSync(path.join(out, name), "utf8")]),
+    );
+    const parsed = parseBotFiles(files, "quoridor");
+    expect(parsed.manifest.entry).toBe("bot.js");
+    expect(Object.keys(parsed.files).sort()).toEqual(["bot.js", "manifest.json"]);
   });
 
   test("stores the validated manifest, not the raw upload", () => {
@@ -438,14 +516,8 @@ describe("auth and contests", () => {
     });
     expect((bobAgain.body.entry as { status: string }).status).toBe("pending");
 
-    await json(`/api/contests/${contestId}/entries/${aliceEntry.id}/approve`, {
-      method: "POST",
-      cookie: admin.cookie,
-    });
-    await json(
-      `/api/contests/${contestId}/entries/${(bobAgain.body.entry as { id: string }).id}/approve`,
-      { method: "POST", cookie: admin.cookie },
-    );
+    await approveEntry(contestId, aliceEntry.id, admin.cookie);
+    await approveEntry(contestId, (bobAgain.body.entry as { id: string }).id, admin.cookie);
 
     const started = await json(`/api/contests/${contestId}/start`, {
       method: "POST",
@@ -492,6 +564,100 @@ describe("auth and contests", () => {
       expect(row).toMatchObject({ rank: 1, wins: 0, draws: 2 });
     }
   }, 25_000);
+
+  test("admin reads a bot's code and approves exactly that version", async () => {
+    const admin = await adminSession();
+    const bob = await register("bob");
+    const carol = await register("carol");
+    const created = await json("/api/contests", {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ title: "Review Cup", gameId: "arena" }),
+    });
+    const contestId = (created.body.contest as { id: string }).id;
+    const up = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: arenaFiles("BobBot") }),
+    });
+    const entryId = (up.body.entry as { id: string }).id;
+    const filesUrl = `/api/contests/${contestId}/entries/${entryId}/files`;
+    const approveUrl = `/api/contests/${contestId}/entries/${entryId}/approve`;
+
+    expect((await json(filesUrl)).status).toBe(401);
+    expect((await json(filesUrl, { cookie: carol.cookie })).status).toBe(403);
+    expect((await json(filesUrl, { cookie: bob.cookie })).status).toBe(200);
+
+    const reviewed = await json(filesUrl, { cookie: admin.cookie });
+    expect(reviewed.status).toBe(200);
+    const files = reviewed.body.files as Array<{ name: string; content: string }>;
+    expect(files.map((f) => f.name)).toEqual(["bot.js", "manifest.json"]);
+    expect(files.find((f) => f.name === "bot.js")!.content).toBe(WAIT_BOT);
+    const hash = reviewed.body.hash as string;
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+
+    const noHash = await json(approveUrl, { method: "POST", cookie: admin.cookie, body: "{}" });
+    expect(noHash.status).toBe(400);
+
+    // Bob swaps the code after the admin read it: the old hash no longer approves.
+    await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: { ...arenaFiles("BobBot"), "bot.js": `${WAIT_BOT}// changed\n` } }),
+    });
+    const stale = await json(approveUrl, {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ hash }),
+    });
+    expect(stale.status).toBe(409);
+
+    const approved = await approveEntry(contestId, entryId, admin.cookie);
+    expect(approved.status).toBe(200);
+    expect((approved.body.entry as { status: string }).status).toBe("approved");
+  });
+
+  test("an upload racing an approval never leaves unreviewed code approved", async () => {
+    const admin = await adminSession();
+    const bob = await register("bob");
+    const bobUser = bob.body.user as PublicUser;
+    const adminUser = { id: "", username: "admin", role: "admin" } as PublicUser;
+    const created = await json("/api/contests", {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ title: "Race Cup", gameId: "arena" }),
+    });
+    const contestId = (created.body.contest as { id: string }).id;
+    const reviewed = { ...arenaFiles("BobBot"), "bot.js": `${WAIT_BOT}// reviewed\n` };
+    const swapped = { ...arenaFiles("BobBot"), "bot.js": `${WAIT_BOT}// swapped\n` };
+    const entry = await submitBot(contestId, bobUser, reviewed);
+    const { hash } = await getEntryFiles(contestId, entry.id, adminUser);
+
+    // Make the approval's file read slow, so the upload lands mid-approval.
+    const realRead = botFiles.readBotFiles;
+    const slowRead = spyOn(botFiles, "readBotFiles").mockImplementation(async (dir) => {
+      const files = await realRead(dir);
+      await Bun.sleep(150);
+      return files;
+    });
+    try {
+      // Call the services directly: over HTTP the auth step staggers them.
+      const approving = reviewEntry(contestId, entry.id, { action: "approve", hash });
+      await Bun.sleep(20);
+      await Promise.allSettled([approving, submitBot(contestId, bobUser, swapped)]);
+      // The approval really went through the slowed read, so the race was exercised.
+      expect(slowRead).toHaveBeenCalledTimes(1);
+    } finally {
+      slowRead.mockRestore();
+    }
+
+    const detail = await json(`/api/contests/${contestId}`, { cookie: admin.cookie });
+    const status = (detail.body.entries as Array<{ id: string; status: string }>).find(
+      (e) => e.id === entry.id,
+    )!.status;
+    const now = await getEntryFiles(contestId, entry.id, adminUser);
+    expect(status === "approved" && now.hash !== hash).toBe(false);
+  }, 30_000);
 
   test("each contest finishes as soon as its own games are done", async () => {
     const admin = await adminSession();

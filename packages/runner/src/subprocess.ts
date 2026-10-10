@@ -7,7 +7,7 @@ import {
   type BotManifest,
   type ServerMessage,
 } from "@machia/protocol";
-import type { BotHandle, BotRunner } from "./types";
+import type { BotHandle, BotRunner, BotStats } from "./types";
 
 export interface SubprocessRunnerOptions {
   timeoutMs?: number;
@@ -26,6 +26,7 @@ class SubprocessBotHandle implements BotHandle {
   private readonly replies: ReplyReader;
   private started = false;
   private destroyed = false;
+  private readonly counts: BotStats = { timeouts: 0, invalidReplies: 0, crashed: false };
 
   constructor(args: {
     playerId: number;
@@ -55,12 +56,24 @@ class SubprocessBotHandle implements BotHandle {
     this.write({ type: "observation", ...(obs as object) });
     const timeoutMs = this.started ? this.timeoutMs : this.startupTimeoutMs;
     this.started = true;
+    let line: string;
     try {
-      const line = await this.replies.next(timeoutMs);
-      return JSON.parse(line);
+      line = await this.replies.next(timeoutMs);
     } catch {
+      if (this.replies.isClosed) this.counts.crashed = true;
+      else this.counts.timeouts += 1;
       return null;
     }
+    try {
+      return JSON.parse(line);
+    } catch {
+      this.counts.invalidReplies += 1;
+      return null;
+    }
+  }
+
+  stats(): BotStats {
+    return { ...this.counts };
   }
 
   async sendEnd(results: PlayerResult[]): Promise<void> {
@@ -154,6 +167,10 @@ class ReplyReader {
   } | null = null;
   private late = 0;
   private closed = false;
+
+  get isClosed(): boolean {
+    return this.closed;
+  }
   private partial = "";
   private oversized = false;
 

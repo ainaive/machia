@@ -4,8 +4,7 @@
 /**
  * Queue Dodger: chase nearest foe, attack when lined up, dodge publicly queued attacks.
  */
-const readline = require("node:readline");
-const rl = readline.createInterface({ input: process.stdin });
+const { run } = require("../machia.js");
 
 function delta(facing) {
   if (facing === "UP") return { x: 0, y: -1 };
@@ -80,45 +79,35 @@ function inFront(self, other) {
   );
 }
 
-rl.on("line", (line) => {
-  let msg;
-  try {
-    msg = JSON.parse(line);
-  } catch {
-    return;
-  }
-  if (msg.type !== "observation") return;
+run({
+  act(msg) {
+    const self = msg.players.find((p) => p.id === msg.selfId);
+    if (!self || !self.alive) {
+      return "WAIT";
+    }
 
-  const self = msg.players.find((p) => p.id === msg.selfId);
-  if (!self || !self.alive) {
-    process.stdout.write(JSON.stringify({ action: "WAIT" }) + "\n");
-    return;
-  }
-
-  const threats = msg.players.filter(
-    (p) => p.id !== self.id && p.alive && willAttackMe(p, self.pos),
-  );
-  if (threats.length > 0) {
-    process.stdout.write(
-      JSON.stringify({ action: dodge(self, msg.mapSize, threats[0]) }) + "\n",
+    const threats = msg.players.filter(
+      (p) => p.id !== self.id && p.alive && willAttackMe(p, self.pos),
     );
-    return;
-  }
+    if (threats.length > 0) {
+      return dodge(self, msg.mapSize, threats[0]);
+    }
 
-  const enemies = msg.players
-    .filter((p) => p.id !== self.id && p.alive)
-    .sort((a, b) => manhattan(self.pos, a.pos) - manhattan(self.pos, b.pos));
-  const nearest = enemies[0];
-  const mid = (msg.mapSize - 1) / 2;
+    const enemies = msg.players
+      .filter((p) => p.id !== self.id && p.alive)
+      .sort((a, b) => manhattan(self.pos, a.pos) - manhattan(self.pos, b.pos));
+    const nearest = enemies[0];
+    const mid = (msg.mapSize - 1) / 2;
 
-  let action;
-  if (nearest && inFront(self, nearest)) {
-    action = "ATTACK";
-  } else if (nearest) {
-    action = toward(self.pos, nearest.pos) || "WAIT";
-  } else {
-    action = toward(self.pos, { x: mid, y: mid }) || "WAIT";
-  }
+    let action;
+    if (nearest && inFront(self, nearest)) {
+      action = "ATTACK";
+    } else if (nearest) {
+      action = toward(self.pos, nearest.pos) || "WAIT";
+    } else {
+      action = toward(self.pos, { x: mid, y: mid }) || "WAIT";
+    }
 
-  process.stdout.write(JSON.stringify({ action }) + "\n");
+    return action;
+  },
 });

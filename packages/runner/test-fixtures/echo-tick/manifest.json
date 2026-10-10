@@ -1,0 +1,6 @@
+{
+  "name": "Echo Tick",
+  "runtime": "node",
+  "entry": "bot.js",
+  "games": ["holdem"]
+}

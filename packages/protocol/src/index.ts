@@ -21,6 +21,9 @@ export interface BotManifest {
   games?: string[];
 }
 
+/** Total size limit for an uploaded contest bot (all files). */
+export const MAX_BOT_UPLOAD_BYTES = 256 * 1024;
+
 export const DEFAULT_BOT_TIMEOUT_MS = 100;
 /** Budget for a bot's first observation, which also pays for process startup. */
 export const DEFAULT_BOT_STARTUP_TIMEOUT_MS = 1000;

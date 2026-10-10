@@ -2,6 +2,17 @@
 
 Bots are long-lived Node.js processes. The platform talks over **stdin/stdout**, one JSON object per line.
 
+## Quick start
+
+From a clone of this repo (`bun install` first):
+
+1. **Start from a sample** close to what you want, inside `bots/` so the SDK path resolves, and rename it:
+   `cp -r bots/turtle bots/my-bot`, then set `name` (and `games`) in `bots/my-bot/manifest.json`.
+2. **Write your logic** in `act(obs)` — see [SDK](#sdk) below and your game's section for observation fields and actions.
+3. **Play it offline**: `bun run match arena my-bot turtle`. It prints ranks, scores and the seed, and flags any bot that timed out, sent invalid replies or crashed. `--seed N` replays a match exactly; `--ticks N` shortens it. Your bot's stderr (`log(...)`) shows as it plays.
+4. **Watch the replay**: with `bun run dev` running, open the printed `/matches/<id>` link. Bots in `bots/` also appear in the local practice lobby.
+5. **Package and upload**: `bun run pack bots/my-bot`, then upload `dist/bots/my-bot/manifest.json` and `dist/bots/my-bot/bot.js` on the contest page.
+
 ## Layout
 
 ```text
@@ -23,12 +34,27 @@ bots/<bot-id>/
 
 `games` lists which games this bot supports. Omitted → defaults to `["arena"]`.
 
+### SDK
+
+[`bots/machia.js`](../bots/machia.js) handles the protocol for you: it parses messages, calls your `act(observation)` (sync or async), and writes exactly one reply per observation, in order, falling back to `WAIT` if `act` throws or returns nothing. Bots under `bots/` load it as `../machia.js`; elsewhere, copy it next to your `bot.js`. `bun run pack` bundles it into the upload either way.
+
+```js
+const { run, log } = require("../machia.js");
+
+run({
+  act(obs) {
+    log("tick", obs.tick); // stderr only — stdout is for replies
+    return "WAIT";
+  },
+});
+```
+
 ## Practice vs contest
 
 - **Practice lobby** (`/games/:gameId`) loads sample bots from the server `bots/` directory. No account needed.
 - **Contests** (`/contests`) require an invite-code account. Upload the same layout (`manifest.json` + `entry` file, plus optional extra `.js`). Total size ≤ 256KB. `runtime` must be `"node"`. `games` must be an array that includes the contest's game.
-- Uploads are **flat**: all files land in one folder, so `entry` must be a bare file name (`bot.js`, not `src/bot.js` or `../x.js`) and `require` only sibling files. The sample bots in `bots/` share `../<game>-lib.js` helpers — inline that code before uploading a copy. The server stores a normalized `manifest.json` (`name`, `runtime`, `entry`, `games`); other fields are dropped.
-- An admin reviews the source, then starts a **1v1 round-robin**. Every pair plays **twice, swapping seats**, and both games use the same seed (same map / deck), so neither seat nor luck favours either bot. Each game counts as a win, loss or draw (equal ranks are a draw). Ranking: wins, then draws, then sum of match scores.
+- Uploads are **flat**: all files land in one folder, so `entry` must be a bare file name (`bot.js`, not `src/bot.js` or `../x.js`) and `require` only sibling files. If your bot spans several files, uses `../machia.js` or the samples' shared `../<game>-lib.js` helpers, or depends on npm packages, run `bun run pack <botDir>`: it bundles everything into one `bot.js` plus a clean `manifest.json` under `dist/bots/<name>/`, ready to upload (and checks the 256KB limit). The server stores a normalized `manifest.json` (`name`, `runtime`, `entry`, `games`); other fields are dropped.
+- An admin reads the uploaded files on the contest page and approves **that exact version** (approval carries a hash of the files, so a re-upload after the review needs a fresh review); you can view your own upload the same way. Then the admin starts a **1v1 round-robin**. Every pair plays **twice, swapping seats**, and both games use the same seed (same map / deck), so neither seat nor luck favours either bot. Each game counts as a win, loss or draw (equal ranks are a draw). Ranking: wins, then draws, then sum of match scores.
 - Caveat until bots are sandboxed: a bot that reads the first game's replay (on disk or over HTTP) learns the shared seed's map / deck for the rematch. Approval is a trust decision.
 - Uploaded bots run as Node child processes. There is no sandbox in v1 — approval is a trust decision. Do not run untrusted contests on a shared machine.
 - The bot's working directory is its own folder. Its environment is minimal: `MACHIA_PLAYER_ID` plus `PATH`, `LANG` and `TZ` when the server has them. Server settings and secrets are not passed through.
@@ -66,6 +92,8 @@ Write **exactly one line per observation**, in order. stdout is reserved for rep
 - Lines written while no observation is outstanding (e.g. after `game_start`) are ignored.
 - A reply line over 64KB counts as invalid JSON.
 - Skipping a reply or writing extra stdout lines shifts every later reply by one tick.
+
+Each replay records per-bot `stats` — `timeouts`, `invalidReplies`, and `crashed` (the process exited while still being asked for actions) — and the replay viewer flags any bot with problems. Check them first when a bot plays worse than expected.
 
 ### `game_end`
 

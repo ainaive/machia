@@ -9,10 +9,20 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
-import type { MatchReplay } from "./api";
+import type { BotStats, MatchReplay } from "./api";
 import { Board } from "./Board";
 import { gameAccent } from "./gameAccent";
 import { RobotToken, playerColor } from "./sprites";
+
+/** Summary of a bot's protocol problems this match, or "" if it had none. */
+function botTrouble(stats: BotStats | undefined): string {
+  if (!stats) return "";
+  const parts: string[] = [];
+  if (stats.crashed) parts.push("进程已退出");
+  if (stats.timeouts > 0) parts.push(`超时 ${stats.timeouts} 次`);
+  if (stats.invalidReplies > 0) parts.push(`无效回复 ${stats.invalidReplies} 次`);
+  return parts.join(" · ");
+}
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
 
@@ -270,6 +280,9 @@ export function ReplayPlayer({
                         ? ` · ${snap.executed[p.playerId]}`
                         : ""}
                     </div>
+                    {botTrouble(p.stats) && (
+                      <div className="truncate text-xs text-clay">{botTrouble(p.stats)}</div>
+                    )}
                   </div>
                   {result && (
                     <div className="text-right font-display tabular-nums">

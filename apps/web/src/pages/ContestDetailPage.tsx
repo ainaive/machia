@@ -4,10 +4,12 @@ import { Link, useParams } from "react-router-dom";
 import {
   approveEntry,
   fetchContest,
+  fetchEntryFiles,
   rejectEntry,
   rerunFailedMatches,
   startContest,
   submitContestBot,
+  type BotFiles,
   type ContestDetail,
   type ContestEntry,
   type ContestMatch,
@@ -67,6 +69,8 @@ export function ContestDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [rejectWhy, setRejectWhy] = useState<Record<string, string>>({});
+  // Bot code the admin has opened, keyed by entry id; approving sends its hash.
+  const [reviewed, setReviewed] = useState<Record<string, BotFiles>>({});
 
   async function reload() {
     const next = await fetchContest(contestId);
@@ -177,7 +181,7 @@ export function ContestDetailPage() {
       )}
 
       <p className="mb-6 max-w-2xl text-sm text-ink/65">
-        管理员审阅提交的 Node Bot 后开赛。审批视为信任源码；平台不提供隔离沙箱。
+        管理员查看并审阅提交的 Node Bot 代码后开赛。审批视为信任这一版源码；平台不提供隔离沙箱。
         练习场仍可免登录使用样例 Bot。
       </p>
 
@@ -249,8 +253,22 @@ export function ContestDetailPage() {
                           type="button"
                           disabled={!e.botName || busy !== null}
                           onClick={() =>
+                            void wrap("review", async () => {
+                              const files = await fetchEntryFiles(contest.id, e.id);
+                              setReviewed((prev) => ({ ...prev, [e.id]: files }));
+                            })
+                          }
+                          className="rounded-md border border-moss/40 px-2 py-1 text-xs text-moss disabled:opacity-40"
+                        >
+                          {reviewed[e.id] ? "刷新代码" : "查看代码"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!reviewed[e.id] || busy !== null}
+                          title={reviewed[e.id] ? undefined : "先查看代码再通过"}
+                          onClick={() =>
                             void wrap("approve", () =>
-                              approveEntry(contest.id, e.id),
+                              approveEntry(contest.id, e.id, reviewed[e.id]!.hash),
                             )
                           }
                           className="rounded-md bg-moss px-2 py-1 text-xs text-paper disabled:opacity-40"
@@ -285,6 +303,24 @@ export function ContestDetailPage() {
                           拒绝
                         </button>
                       </span>
+                    )}
+                  {user?.role === "admin" &&
+                    contest.status === "open" &&
+                    e.status !== "approved" &&
+                    reviewed[e.id] && (
+                      <div className="basis-full space-y-2 pt-1">
+                        <p className="text-xs text-ink/50">
+                          通过即批准下面这一版代码；参赛者若之后重新上传，需要重新查看。
+                        </p>
+                        {reviewed[e.id]!.files.map((f) => (
+                          <div key={f.name}>
+                            <div className="font-mono text-xs text-ink/60">{f.name}</div>
+                            <pre className="max-h-80 overflow-auto rounded-md border border-ink/10 bg-ink/[0.03] p-2 font-mono text-xs leading-relaxed">
+                              {f.content}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
                     )}
                 </li>
               ))}

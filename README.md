@@ -102,4 +102,12 @@ CI：`.github/workflows/ci.yml`（PR 与 `main`）。给 agent / 贡献者的约
 
 ## 添加 Bot
 
-见 [docs/bot-protocol.md](docs/bot-protocol.md)。
+五步上手见 [docs/bot-protocol.md#quick-start](docs/bot-protocol.md#quick-start)：复制样例到 `bots/<名字>/`，用 [`bots/machia.js`](bots/machia.js) SDK 写 `act(obs)`，本地对战，打包上传。不用启动服务器也能本地对战：
+
+```bash
+bun run match quoridor quoridor-rush ./my-bot --seed 5   # 样例 id 或 Bot 目录
+```
+
+会打印排名、分数与种子，并把回放写入 `data/replays/`（`bun run dev` 时可在 `/matches/<id>` 观看）。
+
+参赛上传只接受扁平文件。`bun run pack <Bot 目录>` 会把 Bot 及其依赖（包括 `machia.js`、样例的 `*-lib.js`、npm 包）打包成一个 `bot.js`，连同规范化的 `manifest.json` 输出到 `dist/bots/<名字>/`，直接上传这两个文件即可。
