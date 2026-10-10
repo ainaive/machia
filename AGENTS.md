@@ -38,7 +38,7 @@ Prefer `bun run check` locally; CI runs the same gates on every PR and `main` pu
 |--------|-------------|
 | Engine / game rules | Unit tests under the package (`*.test.ts`); `docs/bot-protocol.md` if observation/actions/rules change; lobby `RulesPanel` if player-facing |
 | Runner / match flow | `packages/runner` tests (registry + `runMatch`) |
-| API / matches | `apps/server` tests (`api.test.ts`, `matches.test.ts`, `platform.test.ts`, `standings.test.ts`) |
+| API / matches | `apps/server` tests (`api.test.ts`, `matches.test.ts`, `platform.test.ts`, `standings.test.ts`, `ladder.test.ts`) |
 | Web UI | `apps/web` tests (`*.test.tsx`, rendered with `react-dom/server`, no browser needed) |
 | Sample bots | Keep demos playable; if protocol or style assumptions change, note in README or protocol docs |
 | New game plugin | Register in `packages/runner` registry; API games list; `/games/:gameId` lobby works via API; board in `apps/web/src/boards/` (registered in `boards/index.tsx`, smoke test in `boards.test.tsx`) + `RulesPanel`; sample bots; protocol appendix; tests for engine + short `runMatch` |
