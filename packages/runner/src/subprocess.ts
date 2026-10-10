@@ -86,7 +86,12 @@ class SubprocessBotHandle implements BotHandle {
   }
 
   private hasExited(): boolean {
-    return this.child.exitCode !== null || this.child.signalCode !== null;
+    // No pid means the spawn itself failed (e.g. ENOENT); `exit` never fires.
+    return (
+      this.child.pid === undefined ||
+      this.child.exitCode !== null ||
+      this.child.signalCode !== null
+    );
   }
 
   private signalGroup(signal: NodeJS.Signals): void {

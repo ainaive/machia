@@ -58,6 +58,15 @@ describe("SubprocessRunner", () => {
     expect(await waitUntilGone(reply.childPid)).toBe(true);
   });
 
+  test("destroy returns at once when the bot process never started", async () => {
+    const runner = new SubprocessRunner({ nodePath: "/nonexistent/node" });
+    const bot = await runner.spawn(fixture("echo-tick"));
+    expect(await bot.requestAction({ tick: 0 })).toBeNull();
+    const started = Date.now();
+    await bot.destroy();
+    expect(Date.now() - started).toBeLessThan(250);
+  });
+
   test("late replies are dropped instead of answering the next tick", async () => {
     const runner = new SubprocessRunner({ timeoutMs: 100, startupTimeoutMs: 100 });
     const bot = await runner.spawn(fixture("slow-start"));
