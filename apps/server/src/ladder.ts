@@ -4,7 +4,9 @@
  * Each finished contest is one rating period: every game in it is scored
  * against the ratings players had going in, and the changes apply together
  * when it ends. Games within a contest have no meaningful order (failed ones
- * can be rerun much later), so a rating must not depend on it.
+ * can be rerun much later), so a rating must not depend on it. Contests are
+ * rated in the order they started: a rerun finishes a contest again, later,
+ * but doesn't move it after the contests that came after it.
  *
  * Ratings are recomputed from contest results on each request rather than
  * stored, so a rerun game or a corrected result is always reflected.
@@ -93,7 +95,7 @@ export async function getLadder(gameId: string): Promise<LadderRow[]> {
        LEFT JOIN users ua ON ua.id = ea.user_id
        LEFT JOIN users ub ON ub.id = eb.user_id
        WHERE c.game_id = ? AND c.status = 'finished' AND m.status = 'done'
-       ORDER BY c.finished_at, c.id`,
+       ORDER BY c.started_at, c.id`,
     )
     .all(gameId);
 
@@ -119,7 +121,7 @@ export async function getLadder(gameId: string): Promise<LadderRow[]> {
     else if (score === 0) t.losses += 1;
     else t.draws += 1;
     t.contestIds.add(row.contest_id);
-    t.lastContestAt = row.finished_at; // rows come oldest contest first
+    if (row.finished_at > t.lastContestAt) t.lastContestAt = row.finished_at;
   };
 
   let period: RatedGame[] = [];

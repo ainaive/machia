@@ -69,13 +69,13 @@ describe("GET /api/ladder/:gameId", () => {
   /** A contest whose games are [a, b, winner, status?] by username; winner null is a draw. */
   function contest(
     id: string,
-    opts: { game?: string; status?: string; finishedAt: string },
+    opts: { game?: string; status?: string; startedAt: string; finishedAt?: string },
     games: Array<[string, string, string | null, string?]>,
   ) {
     db.run(
-      `INSERT INTO contests (id, title, game_id, status, created_at, finished_at, created_by)
-       VALUES (?, ?, ?, ?, '2026-01-01', ?, 'u_admin')`,
-      [id, id, opts.game ?? "arena", opts.status ?? "finished", opts.finishedAt],
+      `INSERT INTO contests (id, title, game_id, status, created_at, started_at, finished_at, created_by)
+       VALUES (?, ?, ?, ?, '2026-01-01', ?, ?, 'u_admin')`,
+      [id, id, opts.game ?? "arena", opts.status ?? "finished", opts.startedAt, opts.finishedAt ?? opts.startedAt],
     );
     const entry = (user: string) => `${id}_${user}`;
     for (const user of new Set(games.flatMap(([a, b]) => [a, b]))) {
@@ -99,20 +99,21 @@ describe("GET /api/ladder/:gameId", () => {
     return { status: res.status, body: (await res.json()) as Record<string, any> };
   }
 
-  test("rates finished contests in order, one contest at a time", async () => {
-    contest("c2", { finishedAt: "2026-02-01" }, [
+  test("rates finished contests in the order they started, one contest at a time", async () => {
+    contest("c2", { startedAt: "2026-02-01" }, [
       ["alice", "carol", null],
       ["carol", "alice", "carol"],
       ["bob", "carol", "bob"],
       ["carol", "bob", null, "error"], // failed game: not rated
     ]);
-    contest("c1", { finishedAt: "2026-01-15" }, [
+    // Started first, but a rerun finished it after c2: still rated first.
+    contest("c1", { startedAt: "2026-01-15", finishedAt: "2026-03-05" }, [
       ["alice", "bob", "alice"],
       ["bob", "alice", "alice"],
     ]);
     // Not counted: still running, or another game.
-    contest("c3", { status: "running", finishedAt: "2026-03-01" }, [["bob", "alice", "bob"]]);
-    contest("c4", { game: "tanks", finishedAt: "2026-03-01" }, [["bob", "alice", "bob"]]);
+    contest("c3", { status: "running", startedAt: "2026-03-01" }, [["bob", "alice", "bob"]]);
+    contest("c4", { game: "tanks", startedAt: "2026-03-01" }, [["bob", "alice", "bob"]]);
 
     // c1 first: alice +32 (two wins as equals). Then c2 from those ratings.
     const ratings = new Map<string, number>();
@@ -135,7 +136,7 @@ describe("GET /api/ladder/:gameId", () => {
     for (const name of ["alice", "bob", "carol"]) {
       expect(byName[name].rating).toBe(Math.round(ratings.get(`u_${name}`)!));
     }
-    expect(byName.alice).toMatchObject({ games: 4, wins: 2, draws: 1, losses: 1, contests: 2, lastContestAt: "2026-02-01" });
+    expect(byName.alice).toMatchObject({ games: 4, wins: 2, draws: 1, losses: 1, contests: 2, lastContestAt: "2026-03-05" });
     expect(byName.bob).toMatchObject({ games: 3, wins: 1, draws: 0, losses: 2, contests: 2 });
     expect(byName.carol).toMatchObject({ games: 3, wins: 1, draws: 1, losses: 1, contests: 1 });
     expect(body.players.map((p: { rank: number }) => p.rank)).toEqual([1, 2, 3]);
@@ -143,7 +144,7 @@ describe("GET /api/ladder/:gameId", () => {
   });
 
   test("equal ratings share a rank", async () => {
-    contest("c1", { finishedAt: "2026-01-15" }, [
+    contest("c1", { startedAt: "2026-01-15" }, [
       ["alice", "bob", null],
       ["bob", "alice", null],
     ]);
