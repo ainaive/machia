@@ -25,22 +25,29 @@ function stamp(now: Date): string {
  * Writes a backup under a hidden temporary name and publishes it only once
  * complete: a failed run must never leave a file that retention would count
  * as a backup (and keep in place of a good, older one).
+ *
+ * Backups hold session tokens and every uploaded bot, so they are owner-only,
+ * as is the folder if this creates it. SQLite and tar choose their own file
+ * modes, hence the umask (safe to narrow: nothing here is async).
  */
 function publish(file: string, write: (partial: string) => void): string {
   const partial = path.join(path.dirname(file), `.${path.basename(file)}.partial`);
+  const umask = process.umask(0o077);
   try {
+    mkdirSync(path.dirname(file), { recursive: true });
     write(partial);
     renameSync(partial, file);
     return file;
   } catch (err) {
     rmSync(partial, { force: true });
     throw err;
+  } finally {
+    process.umask(umask);
   }
 }
 
 /** Snapshot of the database via VACUUM INTO, read-only on the live file. */
 export function backupDatabase(dbPath: string, backupDir: string, now = new Date()): string {
-  mkdirSync(backupDir, { recursive: true });
   return publish(path.join(backupDir, `machia-${stamp(now)}.db`), (partial) => {
     const db = new Database(dbPath, { readonly: true });
     try {
@@ -54,7 +61,6 @@ export function backupDatabase(dbPath: string, backupDir: string, now = new Date
 /** tar.gz of every uploaded bot, or null if nothing was ever uploaded. */
 export function backupUploads(uploadsDir: string, backupDir: string, now = new Date()): string | null {
   if (!existsSync(uploadsDir)) return null;
-  mkdirSync(backupDir, { recursive: true });
   return publish(path.join(backupDir, `uploads-${stamp(now)}.tar.gz`), (partial) => {
     const tar = spawnSync("tar", ["-czf", partial, "-C", uploadsDir, "."], { encoding: "utf8" });
     if (tar.status !== 0) throw new Error(`tar failed: ${tar.stderr || tar.error?.message}`);

@@ -140,6 +140,7 @@ systemd-run --wait --pipe --collect -p User=machia -p NoNewPrivileges=yes -p Pri
 - **Uploaded bots:** `data/uploads` → `data/backups/uploads-<UTC stamp>-<4 hex>.tar.gz`. (The random suffix keeps two runs in the same second apart.)
 - **Retention:** keeps the newest 14 of each kind.
 - **Replays:** deletes practice replays older than 30 days. Replays referenced by a contest are never deleted.
+- **Permissions:** backups contain session tokens and every uploaded bot, so they are written `0600` (and the backup folder `0700` when maintenance creates it), private to `machia` even with `MACHIA_BACKUP_DIR` outside `data/`. Installs that ran maintenance before this: `chmod 700 data/backups && chmod 600 data/backups/*`.
 
 ```bash
 cp deploy/machia-maintenance.service deploy/machia-maintenance.timer /etc/systemd/system/

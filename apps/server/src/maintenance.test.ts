@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { backupDatabase, backupUploads, pruneBackups, pruneReplays } from "./maintenance";
@@ -40,6 +48,22 @@ describe("maintenance", () => {
     const listing = spawnSync("tar", ["-tzf", file], { encoding: "utf8" }).stdout;
     expect(listing).toContain("u1/e1/bot.js");
     expect(backupUploads(path.join(dir, "missing"), path.join(dir, "backups"), NOW)).toBeNull();
+  });
+
+  test("backups are readable only by the user that made them", () => {
+    const dir = temp();
+    const dbPath = path.join(dir, "machia.db");
+    new Database(dbPath).close();
+    mkdirSync(path.join(dir, "uploads", "u1"), { recursive: true });
+    writeFileSync(path.join(dir, "uploads", "u1", "bot.js"), "// bot");
+    // Somewhere outside data/, which is what would otherwise keep them private.
+    const backupDir = path.join(dir, "elsewhere", "backups");
+
+    const mode = (file: string) => statSync(file).mode & 0o777;
+    expect(mode(backupDatabase(dbPath, backupDir, NOW))).toBe(0o600);
+    expect(mode(backupUploads(path.join(dir, "uploads"), backupDir, NOW)!)).toBe(0o600);
+    expect(mode(backupDir)).toBe(0o700);
+    expect(mode(path.join(dir, "elsewhere"))).toBe(0o700);
   });
 
   // Root can read anything, so the unreadable-file failure can't be staged.
