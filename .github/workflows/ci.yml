@@ -25,6 +25,13 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      # Lets the bubblewrap sandbox tests run (they skip where bwrap can't).
+      - name: Sandbox prerequisites
+        run: |
+          sudo apt-get install -y -q bubblewrap
+          sudo cp deploy/apparmor-bwrap /etc/apparmor.d/bwrap
+          sudo apparmor_parser -r /etc/apparmor.d/bwrap || echo "AppArmor not active; bwrap may work without it"
+
       - name: Typecheck
         run: bun run typecheck
 

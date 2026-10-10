@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-# Unprivileged system user; bots run as this user too (see docs/deploy.md).
+# Unprivileged system user; bots run as this user too, inside the sandbox.
 User=machia
 Group=machia
 WorkingDirectory=/opt/machia
@@ -12,6 +12,8 @@ EnvironmentFile=/etc/machia.env
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 # Bun's transpiler cache would need a writable home; skip it.
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+# Run bots in bubblewrap with per-bot limits (docs/deploy.md, "Bot sandbox").
+Environment=MACHIA_SANDBOX=bwrap
 ExecStart=/usr/local/bin/bun run --filter @machia/server start
 Restart=on-failure
 RestartSec=3
@@ -23,9 +25,12 @@ PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/opt/machia/data
-# Bounds for the API plus up to four bot processes per match.
-MemoryMax=1G
-TasksMax=256
+# The API manages one cgroup per bot below its own (systemd 254+).
+Delegate=yes
+DelegateSubgroup=server
+# Backstop for the API plus every running bot (each bot: 256MB, 32 tasks).
+MemoryMax=3G
+TasksMax=512
 
 [Install]
 WantedBy=multi-user.target

@@ -98,10 +98,44 @@ Admin is created from those three `MACHIA_ADMIN_*` variables on startup. There i
 
 Password reset uses SMTP when `MACHIA_SMTP_HOST` and `MACHIA_SMTP_FROM` are set; otherwise the API logs the reset URL. `MACHIA_PUBLIC_URL` must be the public origin so reset links in email (and Better Auth cookies) are correct.
 
+## Bot sandbox
+
+The unit sets `MACHIA_SANDBOX=bwrap`: every bot (practice and contest) runs in [bubblewrap](https://github.com/containers/bubblewrap) with no network, its own process tree, read-only system directories, a private `/tmp`, and only its own folder visible (sample bots see `bots/`, for their shared helpers) — not `data/`, other uploads, or the rest of the host. Each bot also gets its own cgroup: 256MB memory (no swap), 32 tasks (processes + threads), 1 CPU. A bot over its memory limit is killed and shows as crashed in the replay.
+
+Host requirements:
+
+1. **bubblewrap**: `apt install bubblewrap` (preinstalled on Ubuntu 24.04).
+2. **AppArmor profile** (Ubuntu 24.04+ blocks unprivileged user namespaces by default):
+   ```bash
+   cp deploy/apparmor-bwrap /etc/apparmor.d/bwrap
+   apparmor_parser -r /etc/apparmor.d/bwrap
+   ```
+3. **Node under `/usr`** (e.g. Ubuntu's `nodejs` at `/usr/bin/node`): the sandbox only exposes `/usr` and the bot's folder.
+4. **systemd ≥ 254** for `Delegate=yes` + `DelegateSubgroup=server` in the unit, which let the API create per-bot cgroups.
+
+At boot the API enables the cgroup controllers and runs a sandbox self-test. If either fails it **refuses to start** (check `journalctl -u machia`), so install the profile *before* deploying this unit. On success the log says `Bots run sandboxed (bwrap; 256MB, 32 tasks, 1 CPU each)`.
+
+| Variable | Default | |
+|----------|---------|-|
+| `MACHIA_SANDBOX` | `off` (unit: `bwrap`) | `bwrap` or `off` |
+| `MACHIA_SANDBOX_CGROUP` | `auto` | the service's delegated cgroup; a path; or `off` for no resource limits |
+| `MACHIA_BOT_MEMORY_MB` / `MACHIA_BOT_PIDS` / `MACHIA_BOT_CPUS` | `256` / `32` / `1` | per-bot limits; tasks must be a whole number, CPUs ≥ 0.01. Node needs about a dozen tasks to start — the boot self-test runs Node under these exact limits and refuses to start if it can't |
+
+To run the sandbox tests on the host, as the service user with the unit's hardening (from a checkout readable by `machia`):
+
+```bash
+systemd-run --wait --pipe --collect -p User=machia -p NoNewPrivileges=yes -p PrivateTmp=yes \
+  -p ProtectSystem=strict -p ProtectHome=yes -p Delegate=yes -p DelegateSubgroup=server \
+  -p WorkingDirectory=/opt/machia -E PATH=/usr/local/bin:/usr/bin:/bin \
+  -E BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 --unit machia-sandbox-tests \
+  -E MACHIA_TEST_CGROUP_ROOT=/sys/fs/cgroup/system.slice/machia-sandbox-tests.service \
+  /usr/local/bin/bun test packages/runner/src/sandbox.test.ts
+```
+
 ## Notes
 
 - Bind the API to loopback (`HOST=127.0.0.1`) so only nginx is public on `:3000`.
-- Bots share the `machia` user with the API, so a bot can still read `data/` (DB, other uploads). Running as non-root limits damage to the host, not to Machia itself — only approve bots you trust until bots get a real sandbox.
+- Without the sandbox (`MACHIA_SANDBOX` unset or `off`), bots share the `machia` user with the API and can read `data/` (DB, other uploads) and use the network — only approve bots you trust in that mode.
 - SPA routes need History API fallback (`try_files $uri /index.html`).
 - nginx gzip for `application/json` keeps match replays small (hundreds of KB uncompressed).
 - This host previously ran Agrippa on `:3000` / `127.0.0.1:3001`. Its Docker stack is stopped and `/etc/nginx/sites-enabled/agrippa` removed; configs remain under `/opt/agrippa` and `sites-available/agrippa`.

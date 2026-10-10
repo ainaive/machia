@@ -20,7 +20,9 @@ import {
   startContest,
   submitBot,
 } from "./contests";
+import { SubprocessRunner } from "@machia/runner";
 import { getDb } from "./db";
+import { sandboxFromEnv } from "./sandbox";
 import { HttpError } from "./errors";
 import { createInvite, deleteInvite, listInvites } from "./invites";
 import { INVITE_HEADER } from "./invite-code";
@@ -30,6 +32,7 @@ import {
   listGames,
   listReplays,
   readReplay,
+  setBotRunner,
   startDemoMatch,
   startMatch,
 } from "./matches";
@@ -381,6 +384,19 @@ export default {
 if (import.meta.main) {
   // Refuse to boot a public deployment on the built-in dev secret.
   authSecret();
+  // Refuse to boot with a sandbox that is configured but doesn't work.
+  const sandbox = sandboxFromEnv();
+  if (sandbox) {
+    sandbox.setupCgroups();
+    await sandbox.selfTest();
+    setBotRunner(new SubprocessRunner({ sandbox }));
+    const { memoryMb, pids, cpus } = sandbox.limits;
+    console.log(
+      sandbox.cgroupRoot
+        ? `Bots run sandboxed (bwrap; ${memoryMb}MB, ${pids} tasks, ${cpus} CPU each)`
+        : "Bots run sandboxed (bwrap; no resource limits)",
+    );
+  }
   kickContestWorker();
   const host = listen.hostname ?? "localhost";
   console.log(`Machia server listening on http://${host}:${listen.port}`);
