@@ -1,3 +1,4 @@
+import { outlasted, rankResults } from "@machia/game-api";
 import {
   actionToDirection,
   coreRect,
@@ -144,18 +145,12 @@ export class GameEngine {
       } satisfies PlayerResult;
     });
 
-    scored.sort((a, b) => {
+    const results = rankResults(scored, (a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      const da = a.deathTick === null ? Number.POSITIVE_INFINITY : a.deathTick;
-      const db = b.deathTick === null ? Number.POSITIVE_INFINITY : b.deathTick;
-      return db - da;
+      return outlasted(a.deathTick, b.deathTick);
     });
 
-    scored.forEach((r, i) => {
-      r.rank = i + 1;
-    });
-
-    return { ticks: this.tick, results: scored };
+    return { ticks: this.tick, results };
   }
 
   private resolveMovement(

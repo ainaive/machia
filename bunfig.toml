@@ -1,0 +1,3 @@
+[test]
+# Keeps test runs from writing replays into the real data/ directory.
+preload = ["./scripts/test-setup.ts"]

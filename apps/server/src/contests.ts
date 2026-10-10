@@ -1,14 +1,15 @@
 import path from "node:path";
-import { getGame, type MatchPlayerSpec } from "@machia/runner";
+import type { Database } from "bun:sqlite";
+import { getGame, randomSeed, type MatchPlayerSpec } from "@machia/runner";
 import type { PublicUser } from "./auth";
 import { botDirForEntry, parseBotFiles, writeBotFiles } from "./botFiles";
 import { defaultUploadsDir, getDb } from "./db";
-import { HttpError, isBusyError } from "./errors";
+import { HttpError } from "./errors";
 import { newId } from "./ids";
 import { runPlayersMatch } from "./matches";
 import {
   computeStandings,
-  generatePairs,
+  generateFixtures,
   winnerFromRanks,
   type StandingRow,
 } from "./standings";
@@ -52,6 +53,7 @@ interface ContestMatchRow {
   rank_a: number | null;
   rank_b: number | null;
   error: string | null;
+  seed: number | null;
   created_at: string;
 }
 
@@ -160,7 +162,7 @@ async function listContestMatches(contestId: string): Promise<ContestMatchRow[]>
   const db = await getDb();
   return db
     .query<ContestMatchRow, [string]>(
-      `SELECT * FROM contest_matches WHERE contest_id = ? ORDER BY created_at ASC`,
+      `SELECT * FROM contest_matches WHERE contest_id = ? ORDER BY created_at ASC, rowid ASC`,
     )
     .all(contestId);
 }
@@ -224,7 +226,8 @@ export async function getContestDetail(id: string, viewer: PublicUser | null) {
       winnerEntryId: m.winner_entry_id,
       scoreA: m.score_a,
       scoreB: m.score_b,
-      error: m.error,
+      // Raw errors can expose server paths; only admins see them.
+      error: m.error === null ? null : viewer?.role === "admin" ? m.error : "Match failed",
     })),
     standings: standingsFor(entries, matches),
   };
@@ -339,32 +342,58 @@ export async function reviewEntry(
 }
 
 export async function startContest(contestId: string) {
-  const contest = await contestById(contestId);
-  if (contest.status !== "open") {
-    throw new HttpError(409, "Contest already started");
-  }
-  const entries = (await listEntries(contestId)).filter((e) => e.status === "approved");
-  if (entries.length < 2) {
-    throw new HttpError(400, "Need at least two approved bots to start");
-  }
-
-  const pairs = generatePairs(entries.map((e) => e.id));
+  await contestById(contestId);
   const db = await getDb();
   const now = new Date().toISOString();
-  db.run(`UPDATE contests SET status = 'running', started_at = ? WHERE id = ?`, [
-    now,
-    contestId,
-  ]);
-  for (const pair of pairs) {
-    db.run(
-      `INSERT INTO contest_matches
-        (id, contest_id, entry_a_id, entry_b_id, status, created_at)
-       VALUES (?, ?, ?, ?, 'pending', ?)`,
-      [newId("cm"), contestId, pair.entryAId, pair.entryBId, now],
+  // One transaction: of two concurrent starts, only one finds the contest
+  // open, and a failed start leaves no status change or half-made fixtures.
+  db.transaction(() => {
+    const claimed = db.run(
+      `UPDATE contests SET status = 'running', started_at = ? WHERE id = ? AND status = 'open'`,
+      [now, contestId],
     );
-  }
+    if (claimed.changes === 0) throw new HttpError(409, "Contest already started");
+    const approved = db
+      .query<{ id: string }, [string]>(
+        `SELECT id FROM entries WHERE contest_id = ? AND status = 'approved'`,
+      )
+      .all(contestId);
+    if (approved.length < 2) {
+      throw new HttpError(400, "Need at least two approved bots to start");
+    }
+    for (const fixture of generateFixtures(approved.map((e) => e.id), randomSeed)) {
+      db.run(
+        `INSERT INTO contest_matches
+          (id, contest_id, entry_a_id, entry_b_id, status, seed, created_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+        [newId("cm"), contestId, fixture.entryAId, fixture.entryBId, fixture.seed, now],
+      );
+    }
+  })();
   kickContestWorker();
   return getContestDetail(contestId, null);
+}
+
+/** Queues a contest's failed games again and reopens the contest if it had finished. */
+export async function rerunFailedMatches(contestId: string, admin: PublicUser) {
+  await contestById(contestId);
+  const db = await getDb();
+  const requeued = db.transaction(() => {
+    const reset = db.run(
+      `UPDATE contest_matches SET status = 'pending', error = NULL
+       WHERE contest_id = ? AND status = 'error'`,
+      [contestId],
+    );
+    if (reset.changes > 0) {
+      db.run(`UPDATE contests SET status = 'running', finished_at = NULL WHERE id = ?`, [
+        contestId,
+      ]);
+    }
+    return reset.changes;
+  })();
+  if (requeued === 0) throw new HttpError(400, "No failed matches to rerun");
+  kickContestWorker();
+  return getContestDetail(contestId, admin);
 }
 
 async function loadEntryPlayer(entryId: string): Promise<MatchPlayerSpec> {
@@ -395,35 +424,35 @@ async function loadEntryPlayer(entryId: string): Promise<MatchPlayerSpec> {
   };
 }
 
+/** Marks a running contest finished once none of its matches are left to play. */
+function finishContestIfDone(db: Database, contestId: string): void {
+  const left = db
+    .query(
+      `SELECT id FROM contest_matches
+       WHERE contest_id = ? AND status IN ('pending', 'running')
+       LIMIT 1`,
+    )
+    .get(contestId);
+  if (left) return;
+  db.run(
+    `UPDATE contests SET status = 'finished', finished_at = ? WHERE id = ? AND status = 'running'`,
+    [new Date().toISOString(), contestId],
+  );
+}
+
 async function finishReadyContests(): Promise<void> {
   const db = await getDb();
   const running = db
-    .query<{ id: string }, []>(
-      `SELECT id FROM contests WHERE status = 'running'`,
-    )
+    .query<{ id: string }, []>(`SELECT id FROM contests WHERE status = 'running'`)
     .all();
-  const now = new Date().toISOString();
-  for (const contest of running) {
-    const pending = db
-      .query(
-        `SELECT id FROM contest_matches
-         WHERE contest_id = ? AND status IN ('pending', 'running')
-         LIMIT 1`,
-      )
-      .get(contest.id);
-    if (pending) continue;
-    db.run(`UPDATE contests SET status = 'finished', finished_at = ? WHERE id = ?`, [
-      now,
-      contest.id,
-    ]);
-  }
+  for (const contest of running) finishContestIfDone(db, contest.id);
 }
 
 async function processNextContestMatch(): Promise<boolean> {
   const db = await getDb();
   const next = db
     .query<ContestMatchRow, []>(
-      `SELECT * FROM contest_matches WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1`,
+      `SELECT * FROM contest_matches WHERE status = 'pending' ORDER BY created_at ASC, rowid ASC LIMIT 1`,
     )
     .get();
   if (!next) {
@@ -432,27 +461,18 @@ async function processNextContestMatch(): Promise<boolean> {
   }
 
   db.run(`UPDATE contest_matches SET status = 'running' WHERE id = ?`, [next.id]);
-  const contest = await contestById(next.contest_id);
+  // Everything after claiming the match is inside the try, so a failure
+  // records an error instead of leaving the match stuck in 'running'.
   try {
+    const contest = await contestById(next.contest_id);
     const players = [
       await loadEntryPlayer(next.entry_a_id),
       await loadEntryPlayer(next.entry_b_id),
     ];
-    let replay;
-    for (;;) {
-      try {
-        replay = await runPlayersMatch(contest.game_id, players, {
-          maxTicks: contestMaxTicks(),
-        });
-        break;
-      } catch (err) {
-        if (isBusyError(err)) {
-          await Bun.sleep(200);
-          continue;
-        }
-        throw err;
-      }
-    }
+    const replay = await runPlayersMatch(contest.game_id, players, {
+      maxTicks: contestMaxTicks(),
+      seed: next.seed ?? undefined,
+    });
     const resultA = replay.results.find((r) => r.playerId === 0);
     const resultB = replay.results.find((r) => r.playerId === 1);
     if (!resultA || !resultB) throw new Error("Match missing results");
@@ -484,6 +504,8 @@ async function processNextContestMatch(): Promise<boolean> {
       [message, next.id],
     );
   }
+  // Finish this contest now, not when the whole queue drains.
+  finishContestIfDone(db, next.contest_id);
   return true;
 }
 

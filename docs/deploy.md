@@ -72,7 +72,7 @@ ps -o user=,pid=,cmd= -u machia
 journalctl -u machia -n 50   # look for EACCES / read-only filesystem errors
 ```
 
-The unit makes the system and the checkout read-only (`ProtectSystem=strict`); only `/opt/machia/data` is writable. If you move data elsewhere with `MACHIA_DB` / `MACHIA_UPLOADS_DIR`, add those paths to `ReadWritePaths=`.
+The unit makes the system and the checkout read-only (`ProtectSystem=strict`); only `/opt/machia/data` is writable. If you move data elsewhere with `MACHIA_DB` / `MACHIA_UPLOADS_DIR` / `MACHIA_REPLAYS_DIR`, add those paths to `ReadWritePaths=`.
 
 `/etc/machia.env` example (do not commit):
 

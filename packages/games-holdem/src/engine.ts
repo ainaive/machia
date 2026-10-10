@@ -6,6 +6,7 @@ import type {
   PlayerResult,
   TickSnapshot,
 } from "@machia/game-api";
+import { createRandom, rankResults } from "@machia/game-api";
 import {
   bestHand,
   cardId,
@@ -235,11 +236,8 @@ export class HoldemEngine implements GameInstance {
       deathTick: s.folded ? this.tick : null,
       kills: 0,
     }));
-    scored.sort((a, b) => b.score - a.score);
-    scored.forEach((r, i) => {
-      r.rank = i + 1;
-    });
-    return { ticks: this.tick, results: scored };
+    const results = rankResults(scored, (a, b) => b.score - a.score);
+    return { ticks: this.tick, results };
   }
 
   private startHand() {
@@ -488,6 +486,7 @@ export const holdemPlugin: GamePlugin = {
   minPlayers: 2,
   maxPlayers: 4,
   create(config) {
-    return new HoldemEngine(config);
+    const random = config.seed === undefined ? undefined : createRandom(config.seed);
+    return new HoldemEngine(config, { random });
   },
 };

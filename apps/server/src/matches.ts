@@ -11,7 +11,9 @@ import {
 
 const ROOT = path.resolve(import.meta.dir, "../../..");
 export const BOTS_DIR = path.join(ROOT, "bots");
-export const REPLAYS_DIR = path.join(ROOT, "data/replays");
+export function replaysDir(): string {
+  return process.env.MACHIA_REPLAYS_DIR ?? path.join(ROOT, "data/replays");
+}
 
 export interface BotInfo {
   id: string;
@@ -88,7 +90,7 @@ function newMatchId(): string {
 export async function runPlayersMatch(
   gameId: string,
   players: MatchPlayerSpec[],
-  options?: { maxTicks?: number },
+  options?: { maxTicks?: number; seed?: number },
 ): Promise<MatchReplay> {
   const plugin = getGame(gameId);
   if (players.length < plugin.minPlayers || players.length > plugin.maxPlayers) {
@@ -96,22 +98,21 @@ export async function runPlayersMatch(
       `Select ${plugin.minPlayers} to ${plugin.maxPlayers} bots for ${plugin.name}`,
     );
   }
-  return withMatchLock(async () => {
-    const id = newMatchId();
-    const replay = await runMatch({
-      id,
-      gameId,
-      players,
-      maxTicks: options?.maxTicks,
-    });
-    await mkdir(REPLAYS_DIR, { recursive: true });
-    await writeFile(
-      path.join(REPLAYS_DIR, `${id}.json`),
-      JSON.stringify(replay),
-      "utf8",
-    );
-    return replay;
+  const id = newMatchId();
+  const replay = await runMatch({
+    id,
+    gameId,
+    players,
+    maxTicks: options?.maxTicks,
+    seed: options?.seed,
   });
+  await mkdir(replaysDir(), { recursive: true });
+  await writeFile(
+    path.join(replaysDir(), `${id}.json`),
+    JSON.stringify(replay),
+    "utf8",
+  );
+  return replay;
 }
 
 export async function startMatch(
@@ -132,7 +133,9 @@ export async function startMatch(
       },
     });
   }
-  return runPlayersMatch(gameId, players);
+  // Practice matches need no login, so they run one at a time. Contest
+  // matches call runPlayersMatch directly and never wait on this lock.
+  return withMatchLock(() => runPlayersMatch(gameId, players));
 }
 
 export const DEMO_BOTS: Record<string, string[]> = {
@@ -171,7 +174,7 @@ const REPLAY_ID_RE = /^[A-Za-z0-9_-]+$/;
 export async function readReplay(id: string): Promise<MatchReplay | null> {
   if (!REPLAY_ID_RE.test(id)) return null;
   try {
-    const raw = await readFile(path.join(REPLAYS_DIR, `${id}.json`), "utf8");
+    const raw = await readFile(path.join(replaysDir(), `${id}.json`), "utf8");
     return JSON.parse(raw) as MatchReplay;
   } catch {
     return null;
@@ -186,8 +189,8 @@ export async function listReplays(): Promise<
     players: MatchReplay["players"];
   }>
 > {
-  await mkdir(REPLAYS_DIR, { recursive: true });
-  const files = await readdir(REPLAYS_DIR);
+  await mkdir(replaysDir(), { recursive: true });
+  const files = await readdir(replaysDir());
   const out = [];
   for (const file of files) {
     if (!file.endsWith(".json")) continue;

@@ -13,9 +13,8 @@ const DEFAULT_DB = path.join(ROOT, "data/machia.db");
 
 let sqlite: Database | null = null;
 
-const APP_SCHEMA = `
-PRAGMA foreign_keys = ON;
-
+/** Schema as of versioning; IF NOT EXISTS lets older databases adopt it. */
+const BASELINE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS contests (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -71,6 +70,58 @@ CREATE INDEX IF NOT EXISTS idx_contest_matches_contest ON contest_matches(contes
 CREATE INDEX IF NOT EXISTS idx_contest_matches_status ON contest_matches(status);
 CREATE INDEX IF NOT EXISTS idx_invite_codes_code ON invite_codes(code);
 `;
+
+/**
+ * App schema migrations, applied in order and tracked in PRAGMA user_version
+ * (Better Auth manages its own tables separately). Never edit a shipped
+ * migration — append a new one.
+ */
+const MIGRATIONS: Array<(db: Database) => void> = [
+  (db) => db.exec(BASELINE_SCHEMA),
+  // Fair contests: each game records its seed; a fixture is created once.
+  (db) => {
+    db.exec(`ALTER TABLE contest_matches ADD COLUMN seed INTEGER`);
+    // The old check-then-insert start could create a contest's fixtures
+    // twice. Keep one row per fixture so the unique index can be built:
+    // a played game first, then one still queued, then an errored one;
+    // the oldest row within each.
+    db.exec(`
+      DELETE FROM contest_matches WHERE rowid IN (
+        SELECT rowid FROM (
+          SELECT rowid, ROW_NUMBER() OVER (
+            PARTITION BY contest_id, entry_a_id, entry_b_id
+            ORDER BY CASE status WHEN 'done' THEN 0 WHEN 'error' THEN 2 ELSE 1 END, rowid
+          ) AS n
+          FROM contest_matches
+        )
+        WHERE n > 1
+      )
+    `);
+    db.exec(
+      `CREATE UNIQUE INDEX idx_contest_matches_fixture
+       ON contest_matches(contest_id, entry_a_id, entry_b_id)`,
+    );
+  },
+];
+
+export const APP_SCHEMA_VERSION = MIGRATIONS.length;
+
+export function migrateApp(db: Database): void {
+  const current = db
+    .query<{ user_version: number }, []>("PRAGMA user_version")
+    .get()!.user_version;
+  if (current > APP_SCHEMA_VERSION) {
+    throw new Error(
+      `Database schema v${current} is newer than this server supports (v${APP_SCHEMA_VERSION})`,
+    );
+  }
+  for (let version = current; version < APP_SCHEMA_VERSION; version++) {
+    db.transaction(() => {
+      MIGRATIONS[version]!(db);
+      db.exec(`PRAGMA user_version = ${version + 1}`);
+    })();
+  }
+}
 
 function defaultDbPath(): string {
   return process.env.MACHIA_DB ?? DEFAULT_DB;
@@ -190,7 +241,7 @@ export async function openDatabase(filePath?: string): Promise<Database> {
   const db = new Database(resolved);
   db.exec("PRAGMA foreign_keys = ON");
   const auth = await migrateAuth(db);
-  db.exec(APP_SCHEMA);
+  migrateApp(db);
   db.run(
     `UPDATE contest_matches SET status = 'pending', error = NULL WHERE status = 'running'`,
   );

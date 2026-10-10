@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { app } from "./index";
 import { parseBotFiles } from "./botFiles";
 import { resetDatabase, closeDatabase } from "./db";
-import { waitForContestWorkerIdle } from "./contests";
+import { startContest, waitForContestWorkerIdle } from "./contests";
+import { HttpError } from "./errors";
 import { setMailSink } from "./mail";
 
 const WAIT_BOT = `const readline = require("node:readline");
@@ -122,6 +123,44 @@ async function register(
     message?: string;
   };
   return { status: raw.status, cookie: raw.headers.get("set-cookie") ? cookieFrom(raw) : "", body };
+}
+
+/** An arena contest with two approved WAIT bots, ready to start. */
+async function readyContest(adminCookie: string, rival = "bob") {
+  const bob = await register(rival);
+  const created = await json("/api/contests", {
+    method: "POST",
+    cookie: adminCookie,
+    body: JSON.stringify({ title: "Ready Cup", gameId: "arena" }),
+  });
+  const contestId = (created.body.contest as { id: string }).id;
+  for (const [cookie, name] of [
+    [adminCookie, "AliceBot"],
+    [bob.cookie, "BobBot"],
+  ] as const) {
+    const up = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie,
+      body: JSON.stringify({ files: arenaFiles(name) }),
+    });
+    const entryId = (up.body.entry as { id: string }).id;
+    await json(`/api/contests/${contestId}/entries/${entryId}/approve`, {
+      method: "POST",
+      cookie: adminCookie,
+    });
+  }
+  return contestId;
+}
+
+async function waitForContest(contestId: string, cookie: string) {
+  const deadline = Date.now() + 20_000;
+  let detail: Record<string, unknown> = {};
+  while (Date.now() < deadline) {
+    detail = (await json(`/api/contests/${contestId}`, { cookie })).body;
+    if ((detail.contest as { status: string }).status === "finished") break;
+    await Bun.sleep(100);
+  }
+  return detail;
 }
 
 describe("bot file validation", () => {
@@ -414,7 +453,8 @@ describe("auth and contests", () => {
     });
     expect(started.status).toBe(200);
     expect((started.body.contest as { status: string }).status).toBe("running");
-    expect((started.body.matches as unknown[]).length).toBe(1);
+    // One pair, played from both seats.
+    expect((started.body.matches as unknown[]).length).toBe(2);
 
     const locked = await json(`/api/contests/${contestId}/bot`, {
       method: "POST",
@@ -435,12 +475,114 @@ describe("auth and contests", () => {
     }
 
     expect((detail.contest as { status: string }).status).toBe("finished");
-    const matches = detail.matches as Array<{ status: string; matchId: string | null }>;
-    expect(matches).toHaveLength(1);
-    expect(matches[0]!.status).toBe("done");
-    expect(matches[0]!.matchId).toBeTruthy();
-    const standings = detail.standings as Array<{ rank: number }>;
+    const matches = detail.matches as Array<{
+      status: string;
+      matchId: string | null;
+      entryAId: string;
+      entryBId: string;
+    }>;
+    expect(matches).toHaveLength(2);
+    expect(matches.every((m) => m.status === "done" && m.matchId)).toBe(true);
+    expect(matches[1]!.entryAId).toBe(matches[0]!.entryBId);
+    expect(matches[1]!.entryBId).toBe(matches[0]!.entryAId);
+    // Identical WAIT bots finish level from both seats: two draws each.
+    const standings = detail.standings as Array<{ rank: number; wins: number; draws: number }>;
     expect(standings).toHaveLength(2);
-    expect(standings[0]!.rank).toBe(1);
+    for (const row of standings) {
+      expect(row).toMatchObject({ rank: 1, wins: 0, draws: 2 });
+    }
+  }, 25_000);
+
+  test("each contest finishes as soon as its own games are done", async () => {
+    const admin = await adminSession();
+    const first = await readyContest(admin.cookie, "bob");
+    const second = await readyContest(admin.cookie, "carol");
+    await startContest(first);
+    await startContest(second);
+    const status = async (id: string) =>
+      ((await json(`/api/contests/${id}`, { cookie: admin.cookie })).body.contest as {
+        status: string;
+      }).status;
+    // The first contest's games run first; it must not wait for the second.
+    let firstDoneWhileSecondRuns = false;
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      const [a, b] = [await status(first), await status(second)];
+      if (a === "finished" && b === "running") {
+        firstDoneWhileSecondRuns = true;
+        break;
+      }
+      if (b === "finished") break;
+      await Bun.sleep(5);
+    }
+    expect(firstDoneWhileSecondRuns).toBe(true);
+  }, 30_000);
+
+  test("admin reruns failed games; only admins see raw errors", async () => {
+    const admin = await adminSession();
+    const contestId = await readyContest(admin.cookie, "bob");
+    const bob = await signIn("bob", "password1");
+    const entries = (await json(`/api/contests/${contestId}`, { cookie: admin.cookie })).body
+      .entries as Array<{ id: string; userId: string; username: string }>;
+    const bobEntry = entries.find((e) => e.username === "bob")!;
+    const manifestPath = path.join(
+      process.env.MACHIA_UPLOADS_DIR!,
+      bobEntry.userId,
+      bobEntry.id,
+      "manifest.json",
+    );
+    rmSync(manifestPath);
+
+    await startContest(contestId);
+    const failed = await waitForContest(contestId, admin.cookie);
+    const adminMatches = failed.matches as Array<{ status: string; error: string | null }>;
+    expect(adminMatches.map((m) => m.status)).toEqual(["error", "error"]);
+    expect(adminMatches[0]!.error).toContain("manifest.json");
+
+    const bobView = (await json(`/api/contests/${contestId}`, { cookie: bob.cookie })).body
+      .matches as Array<{ error: string | null }>;
+    expect(bobView.map((m) => m.error)).toEqual(["Match failed", "Match failed"]);
+
+    const denied = await json(`/api/contests/${contestId}/rerun-failed`, {
+      method: "POST",
+      cookie: bob.cookie,
+    });
+    expect(denied.status).toBe(403);
+
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ name: "BobBot", runtime: "node", entry: "bot.js", games: ["arena"] }),
+    );
+    const rerun = await json(`/api/contests/${contestId}/rerun-failed`, {
+      method: "POST",
+      cookie: admin.cookie,
+    });
+    expect(rerun.status).toBe(200);
+    expect((rerun.body.contest as { status: string }).status).toBe("running");
+
+    const done = await waitForContest(contestId, admin.cookie);
+    const matches = done.matches as Array<{ status: string; error: string | null }>;
+    expect(matches.map((m) => m.status)).toEqual(["done", "done"]);
+    expect(matches.every((m) => m.error === null)).toBe(true);
+
+    const nothing = await json(`/api/contests/${contestId}/rerun-failed`, {
+      method: "POST",
+      cookie: admin.cookie,
+    });
+    expect(nothing.status).toBe(400);
+  }, 30_000);
+
+  test("concurrent starts create the fixtures once", async () => {
+    const admin = await adminSession();
+    const contestId = await readyContest(admin.cookie);
+    // Call the service directly: over HTTP the auth check staggers the two
+    // requests enough that the race never shows.
+    const results = await Promise.allSettled([startContest(contestId), startContest(contestId)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(rejected.reason).toBeInstanceOf(HttpError);
+    expect((rejected.reason as HttpError).status).toBe(409);
+    const detail = await waitForContest(contestId, admin.cookie);
+    expect(detail.matches as unknown[]).toHaveLength(2);
   }, 25_000);
 });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { quoridorPlugin } from "./index";
 import {
   BOARD_SIZE,
   QuoridorEngine,
@@ -107,5 +108,19 @@ describe("quoridor engine", () => {
     g.step({ 0: "MOVE:N" });
     expect(g.isAlive(0)).toBe(false);
     expect(g.isAlive(1)).toBe(true);
+  });
+});
+
+describe("quoridor ranking", () => {
+  test("players with identical results share a rank", () => {
+    const game = quoridorPlugin.create({ playerCount: 2, seed: 1 });
+    for (let t = 0; t < 6 && !game.finished; t++) {
+      const actions: Record<number, unknown> = {};
+      for (const id of [0, 1]) if (game.isAlive(id)) actions[id] = game.normalizeAction("WAIT");
+      game.step(actions);
+    }
+    const [first, second] = game.results().results;
+    expect(first!.score).toBe(second!.score);
+    expect([first!.rank, second!.rank]).toEqual([1, 1]);
   });
 });

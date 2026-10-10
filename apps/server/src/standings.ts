@@ -1,17 +1,26 @@
-export interface Pair {
+/** One contest game: entry A takes seat 0, entry B seat 1. */
+export interface Fixture {
   entryAId: string;
   entryBId: string;
+  seed: number;
 }
 
-export function generatePairs(entryIds: string[]): Pair[] {
+/**
+ * Round-robin where every pair plays twice, swapping seats, from one shared
+ * seed: each bot gets the same map/deck from both seats, so neither seat
+ * order nor luck favours one of them.
+ */
+export function generateFixtures(entryIds: string[], nextSeed: () => number): Fixture[] {
   const ids = [...entryIds].sort((a, b) => a.localeCompare(b));
-  const pairs: Pair[] = [];
+  const fixtures: Fixture[] = [];
   for (let i = 0; i < ids.length; i++) {
     for (let j = i + 1; j < ids.length; j++) {
-      pairs.push({ entryAId: ids[i]!, entryBId: ids[j]! });
+      const seed = nextSeed();
+      fixtures.push({ entryAId: ids[i]!, entryBId: ids[j]!, seed });
+      fixtures.push({ entryAId: ids[j]!, entryBId: ids[i]!, seed });
     }
   }
-  return pairs;
+  return fixtures;
 }
 
 export interface MatchOutcome {
