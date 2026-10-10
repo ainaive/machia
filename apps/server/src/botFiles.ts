@@ -31,25 +31,33 @@ function sanitizeFilename(name: string): string {
   return base;
 }
 
-// require("./x"), import("./x"), import ... from "./x": relative specifiers only.
-const RELATIVE_LOAD_RE = /(?:require\s*\(\s*|import\s*\(\s*|from\s+)["'](\.{1,2}\/[^"']+)["']/g;
+const importScanner = new Bun.Transpiler({ loader: "js" });
 
 /**
  * Uploads are flat, so code may only load sibling files that were uploaded
  * with it. Catches the common mistake of uploading a bot unbundled (e.g. a
  * sample that needs ../machia.js) at upload time instead of mid-contest.
+ * Imports come from a real parse, so comments and strings don't count.
  */
 function checkLocalLoads(files: Record<string, string>): void {
   for (const [name, content] of Object.entries(files)) {
     if (!/\.m?js$/.test(name)) continue;
-    for (const [, spec] of content.matchAll(RELATIVE_LOAD_RE)) {
-      const target = spec!.slice(2);
+    let imports: Array<{ path: string }>;
+    try {
+      // Node allows a leading #! line; the scanner doesn't.
+      imports = importScanner.scanImports(content.replace(/^#![^\n]*/, ""));
+    } catch {
+      throw new HttpError(400, `${name} could not be parsed as JavaScript`);
+    }
+    for (const { path: spec } of imports) {
+      if (!spec.startsWith("./") && !spec.startsWith("../")) continue;
+      const target = spec.slice(2);
       const present =
-        spec!.startsWith("./") &&
+        spec.startsWith("./") &&
         !target.includes("/") &&
         [target, `${target}.js`, `${target}.mjs`, `${target}.json`].some((f) => f in files);
       if (!present) {
-        const where = spec!.startsWith("../") || target.includes("/")
+        const where = spec.startsWith("../") || target.includes("/")
           ? "is outside the upload"
           : "was not uploaded";
         throw new HttpError(

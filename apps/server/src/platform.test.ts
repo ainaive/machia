@@ -254,6 +254,26 @@ describe("bot file validation", () => {
     ).toBeDefined();
   });
 
+  test("only actual imports count, not comments or strings", () => {
+    const manifest = JSON.stringify({ name: "X", runtime: "node", entry: "bot.js", games: ["arena"] });
+    const mentions = [
+      '// previously require("../helper.js")',
+      '/* import x from "../old.js" */',
+      'const note = "see require(\'./nope\')";',
+      WAIT_BOT,
+    ].join("\n");
+    expect(parseBotFiles({ "manifest.json": manifest, "bot.js": mentions }, "arena").files["bot.js"]).toBe(
+      mentions,
+    );
+    expect(() =>
+      parseBotFiles({ "manifest.json": manifest, "bot.js": "const = ;" }, "arena"),
+    ).toThrow(/could not be parsed/);
+    const shebang = `#!/usr/bin/env node\n${WAIT_BOT}`;
+    expect(parseBotFiles({ "manifest.json": manifest, "bot.js": shebang }, "arena").files["bot.js"]).toBe(
+      shebang,
+    );
+  });
+
   test("the approval hash tells file boundaries apart", () => {
     // NUL-joined fields made these two different uploads hash the same.
     const oneFile = [{ name: "bot.js", content: "A\0helper.js\0B" }];
