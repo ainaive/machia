@@ -1,22 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import {
   computeStandings,
-  generatePairs,
+  generateFixtures,
   winnerFromRanks,
 } from "./standings";
 
-describe("generatePairs", () => {
+describe("generateFixtures", () => {
+  const counter = () => {
+    let n = 100;
+    return () => n++;
+  };
+
   test("empty and singleton", () => {
-    expect(generatePairs([])).toEqual([]);
-    expect(generatePairs(["a"])).toEqual([]);
+    expect(generateFixtures([], counter())).toEqual([]);
+    expect(generateFixtures(["a"], counter())).toEqual([]);
   });
 
-  test("three entries yield three unordered pairs", () => {
-    const pairs = generatePairs(["c", "a", "b"]);
-    expect(pairs).toEqual([
-      { entryAId: "a", entryBId: "b" },
-      { entryAId: "a", entryBId: "c" },
-      { entryAId: "b", entryBId: "c" },
+  test("every pair plays twice, swapping seats, with one shared seed", () => {
+    expect(generateFixtures(["c", "a", "b"], counter())).toEqual([
+      { entryAId: "a", entryBId: "b", seed: 100 },
+      { entryAId: "b", entryBId: "a", seed: 100 },
+      { entryAId: "a", entryBId: "c", seed: 101 },
+      { entryAId: "c", entryBId: "a", seed: 101 },
+      { entryAId: "b", entryBId: "c", seed: 102 },
+      { entryAId: "c", entryBId: "b", seed: 102 },
     ]);
   });
 });

@@ -28,7 +28,8 @@ bots/<bot-id>/
 - **Practice lobby** (`/games/:gameId`) loads sample bots from the server `bots/` directory. No account needed.
 - **Contests** (`/contests`) require an invite-code account. Upload the same layout (`manifest.json` + `entry` file, plus optional extra `.js`). Total size ≤ 256KB. `runtime` must be `"node"`. `games` must be an array that includes the contest's game.
 - Uploads are **flat**: all files land in one folder, so `entry` must be a bare file name (`bot.js`, not `src/bot.js` or `../x.js`) and `require` only sibling files. The sample bots in `bots/` share `../<game>-lib.js` helpers — inline that code before uploading a copy. The server stores a normalized `manifest.json` (`name`, `runtime`, `entry`, `games`); other fields are dropped.
-- An admin reviews the source, then starts a **1v1 round-robin**. Ranking: wins, then draws, then sum of match scores.
+- An admin reviews the source, then starts a **1v1 round-robin**. Every pair plays **twice, swapping seats**, and both games use the same seed (same map / deck), so neither seat nor luck favours either bot. Each game counts as a win, loss or draw (equal ranks are a draw). Ranking: wins, then draws, then sum of match scores.
+- Caveat until bots are sandboxed: a bot that reads the first game's replay (on disk or over HTTP) learns the shared seed's map / deck for the rematch. Approval is a trust decision.
 - Uploaded bots run as Node child processes. There is no sandbox in v1 — approval is a trust decision. Do not run untrusted contests on a shared machine.
 - The bot's working directory is its own folder. Its environment is minimal: `MACHIA_PLAYER_ID` plus `PATH`, `LANG` and `TZ` when the server has them. Server settings and secrets are not passed through.
 

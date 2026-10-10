@@ -137,7 +137,7 @@ export function ContestDetailPage() {
     myEntry?.status !== "approved";
 
   return (
-    <SiteShell accent={accent} subtitle={`${game.name} · 1v1 循环赛，按胜场、平局、总分排名。`}>
+    <SiteShell accent={accent} subtitle={`${game.name} · 1v1 循环赛，每对交换座位各打一局，按胜场、平局、总分排名。`}>
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link
           to="/contests"
@@ -352,7 +352,7 @@ export function ContestDetailPage() {
             </button>
           )}
           <p className="text-xs text-ink/50">
-            已通过 {approvedCount} / {entries.length} · 开赛后生成全部 1v1 对局，串行执行。
+            已通过 {approvedCount} / {entries.length} · 开赛后每对生成两局（交换座位、同一种子），串行执行。
           </p>
           <Link
             to={`/games/${game.id}`}

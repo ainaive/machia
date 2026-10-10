@@ -78,6 +78,14 @@ CREATE INDEX IF NOT EXISTS idx_invite_codes_code ON invite_codes(code);
  */
 const MIGRATIONS: Array<(db: Database) => void> = [
   (db) => db.exec(BASELINE_SCHEMA),
+  // Fair contests: each game records its seed; a fixture is created once.
+  (db) => {
+    db.exec(`ALTER TABLE contest_matches ADD COLUMN seed INTEGER`);
+    db.exec(
+      `CREATE UNIQUE INDEX idx_contest_matches_fixture
+       ON contest_matches(contest_id, entry_a_id, entry_b_id)`,
+    );
+  },
 ];
 
 export const APP_SCHEMA_VERSION = MIGRATIONS.length;

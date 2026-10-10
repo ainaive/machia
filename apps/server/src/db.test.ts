@@ -57,4 +57,18 @@ describe("app schema migrations", () => {
     db.exec(`PRAGMA user_version = ${APP_SCHEMA_VERSION + 1}`);
     expect(() => migrateApp(db)).toThrow(/newer than this server/);
   });
+
+  test("contest matches record a seed and each fixture exists once", () => {
+    const db = new Database(":memory:");
+    migrateApp(db);
+    const insert = (id: string) =>
+      db.run(
+        `INSERT INTO contest_matches (id, contest_id, entry_a_id, entry_b_id, status, seed, created_at)
+         VALUES (?, 'c1', 'e1', 'e2', 'pending', 7, '2026-10-10')`,
+        [id],
+      );
+    insert("cm1");
+    expect(db.query(`SELECT seed FROM contest_matches WHERE id = 'cm1'`).get()).toEqual({ seed: 7 });
+    expect(() => insert("cm2")).toThrow(/UNIQUE/);
+  });
 });

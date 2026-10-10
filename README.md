@@ -63,7 +63,7 @@ bun run dev
 | `/games/:gameId` | 练习场大厅（样例 Bot，免登录） |
 | `/matches/:matchId` | 对局回放（可刷新） |
 
-在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：邀请码注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1，再看积分榜与回放。
+在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：邀请码注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1（每对交换座位各打一局，两局同一随机种子），再看积分榜与回放。
 
 生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。VPS 部署（nginx `:3000` TLS + loopback API）见 [docs/deploy.md](docs/deploy.md)。
 

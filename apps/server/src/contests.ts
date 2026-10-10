@@ -1,5 +1,5 @@
 import path from "node:path";
-import { getGame, type MatchPlayerSpec } from "@machia/runner";
+import { getGame, randomSeed, type MatchPlayerSpec } from "@machia/runner";
 import type { PublicUser } from "./auth";
 import { botDirForEntry, parseBotFiles, writeBotFiles } from "./botFiles";
 import { defaultUploadsDir, getDb } from "./db";
@@ -8,7 +8,7 @@ import { newId } from "./ids";
 import { runPlayersMatch } from "./matches";
 import {
   computeStandings,
-  generatePairs,
+  generateFixtures,
   winnerFromRanks,
   type StandingRow,
 } from "./standings";
@@ -52,6 +52,7 @@ interface ContestMatchRow {
   rank_a: number | null;
   rank_b: number | null;
   error: string | null;
+  seed: number | null;
   created_at: string;
 }
 
@@ -160,7 +161,7 @@ async function listContestMatches(contestId: string): Promise<ContestMatchRow[]>
   const db = await getDb();
   return db
     .query<ContestMatchRow, [string]>(
-      `SELECT * FROM contest_matches WHERE contest_id = ? ORDER BY created_at ASC`,
+      `SELECT * FROM contest_matches WHERE contest_id = ? ORDER BY created_at ASC, rowid ASC`,
     )
     .all(contestId);
 }
@@ -339,30 +340,34 @@ export async function reviewEntry(
 }
 
 export async function startContest(contestId: string) {
-  const contest = await contestById(contestId);
-  if (contest.status !== "open") {
-    throw new HttpError(409, "Contest already started");
-  }
-  const entries = (await listEntries(contestId)).filter((e) => e.status === "approved");
-  if (entries.length < 2) {
-    throw new HttpError(400, "Need at least two approved bots to start");
-  }
-
-  const pairs = generatePairs(entries.map((e) => e.id));
+  await contestById(contestId);
   const db = await getDb();
   const now = new Date().toISOString();
-  db.run(`UPDATE contests SET status = 'running', started_at = ? WHERE id = ?`, [
-    now,
-    contestId,
-  ]);
-  for (const pair of pairs) {
-    db.run(
-      `INSERT INTO contest_matches
-        (id, contest_id, entry_a_id, entry_b_id, status, created_at)
-       VALUES (?, ?, ?, ?, 'pending', ?)`,
-      [newId("cm"), contestId, pair.entryAId, pair.entryBId, now],
+  // One transaction: of two concurrent starts, only one finds the contest
+  // open, and a failed start leaves no status change or half-made fixtures.
+  db.transaction(() => {
+    const claimed = db.run(
+      `UPDATE contests SET status = 'running', started_at = ? WHERE id = ? AND status = 'open'`,
+      [now, contestId],
     );
-  }
+    if (claimed.changes === 0) throw new HttpError(409, "Contest already started");
+    const approved = db
+      .query<{ id: string }, [string]>(
+        `SELECT id FROM entries WHERE contest_id = ? AND status = 'approved'`,
+      )
+      .all(contestId);
+    if (approved.length < 2) {
+      throw new HttpError(400, "Need at least two approved bots to start");
+    }
+    for (const fixture of generateFixtures(approved.map((e) => e.id), randomSeed)) {
+      db.run(
+        `INSERT INTO contest_matches
+          (id, contest_id, entry_a_id, entry_b_id, status, seed, created_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+        [newId("cm"), contestId, fixture.entryAId, fixture.entryBId, fixture.seed, now],
+      );
+    }
+  })();
   kickContestWorker();
   return getContestDetail(contestId, null);
 }
@@ -423,7 +428,7 @@ async function processNextContestMatch(): Promise<boolean> {
   const db = await getDb();
   const next = db
     .query<ContestMatchRow, []>(
-      `SELECT * FROM contest_matches WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1`,
+      `SELECT * FROM contest_matches WHERE status = 'pending' ORDER BY created_at ASC, rowid ASC LIMIT 1`,
     )
     .get();
   if (!next) {
@@ -443,6 +448,7 @@ async function processNextContestMatch(): Promise<boolean> {
       try {
         replay = await runPlayersMatch(contest.game_id, players, {
           maxTicks: contestMaxTicks(),
+          seed: next.seed ?? undefined,
         });
         break;
       } catch (err) {
