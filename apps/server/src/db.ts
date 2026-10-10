@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { getMigrations } from "better-auth/db/migration";
+import { botDirForEntry, hashBotDirSync } from "./botFiles";
 import {
   createMachiaAuth,
   setAuth,
@@ -102,6 +103,21 @@ const MIGRATIONS: Array<(db: Database) => void> = [
        ON contest_matches(contest_id, entry_a_id, entry_b_id)`,
     );
   },
+  // Approval pins the exact files reviewed; games check it before running.
+  // Approvals from before this pin their current files — what such a bot
+  // would have run anyway — so upgrading doesn't stop them from playing.
+  (db) => {
+    db.exec(`ALTER TABLE entries ADD COLUMN approved_hash TEXT`);
+    const approved = db
+      .query<{ id: string; user_id: string }, []>(
+        `SELECT id, user_id FROM entries WHERE status = 'approved'`,
+      )
+      .all();
+    for (const entry of approved) {
+      const hash = hashBotDirSync(botDirForEntry(defaultUploadsDir(), entry.user_id, entry.id));
+      if (hash) db.run(`UPDATE entries SET approved_hash = ? WHERE id = ?`, [hash, entry.id]);
+    }
+  },
 ];
 
 export const APP_SCHEMA_VERSION = MIGRATIONS.length;
@@ -123,7 +139,7 @@ export function migrateApp(db: Database): void {
   }
 }
 
-function defaultDbPath(): string {
+export function defaultDbPath(): string {
   return process.env.MACHIA_DB ?? DEFAULT_DB;
 }
 

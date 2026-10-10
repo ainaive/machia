@@ -132,6 +132,30 @@ systemd-run --wait --pipe --collect -p User=machia -p NoNewPrivileges=yes -p Pri
   /usr/local/bin/bun test packages/runner/src/sandbox.test.ts
 ```
 
+## Backups and cleanup
+
+`deploy/machia-maintenance.timer` runs `bun run --filter @machia/server maintenance` daily (04:00 plus up to 15 minutes, catching up after downtime), as `machia` with the same hardening as the API:
+
+- **Database:** a consistent snapshot via SQLite `VACUUM INTO` (safe while the API runs) → `data/backups/machia-<UTC stamp>-<4 hex>.db`.
+- **Uploaded bots:** `data/uploads` → `data/backups/uploads-<UTC stamp>-<4 hex>.tar.gz`. (The random suffix keeps two runs in the same second apart.)
+- **Retention:** keeps the newest 14 of each kind.
+- **Replays:** deletes practice replays older than 30 days. Replays referenced by a contest are never deleted.
+
+```bash
+cp deploy/machia-maintenance.service deploy/machia-maintenance.timer /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now machia-maintenance.timer
+systemctl start machia-maintenance.service      # run once now
+journalctl -u machia-maintenance -n 20          # what it did
+```
+
+| Variable | Default | |
+|----------|---------|-|
+| `MACHIA_BACKUP_DIR` | `data/backups` | where backups go (must be in the unit's `ReadWritePaths=`) |
+| `MACHIA_BACKUP_KEEP` | `14` | backups kept per kind |
+| `MACHIA_REPLAY_DAYS` | `30` | practice replay retention; `0` keeps them forever |
+
+Backups stay on the same disk: they protect against mistakes and corruption, not disk loss. Copy `data/backups` off the host for that. To restore: stop `machia`, copy a `machia-*.db` over `data/machia.db` (and extract an `uploads-*.tar.gz` into `data/uploads`), `chown -R machia: /opt/machia/data`, start `machia`. The database snapshot and the uploads archive are separate steps (database first) with no guaranteed gap — archiving a large `data/uploads` can take a while — so a bot changed during maintenance can disagree with its approval; such a bot's contest games fail with "changed since they were approved" (visible to admins) rather than running unreviewed code. Restore the matching uploads, or open the bot's code on the contest page and **重新批准此版本** (re-approve; allowed even after the contest started), then **重跑失败对局**.
+
 ## Notes
 
 - Bind the API to loopback (`HOST=127.0.0.1`) so only nginx is public on `:3000`.

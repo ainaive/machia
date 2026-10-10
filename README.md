@@ -39,6 +39,7 @@ bun run dev
 | `MACHIA_DB` | `data/machia.db` | SQLite 路径 |
 | `MACHIA_UPLOADS_DIR` | `data/uploads` | 参赛 Bot 存放目录 |
 | `MACHIA_SANDBOX` | `off` | `bwrap`：Bot 在沙箱中运行（生产 unit 默认开启，见 deploy.md） |
+| `MACHIA_BACKUP_DIR` / `_KEEP` / `MACHIA_REPLAY_DAYS` | `data/backups` / `14` / `30` | 每日维护：数据库与上传备份、保留份数、练习回放保留天数（见 deploy.md） |
 | `MACHIA_REPLAYS_DIR` | `data/replays` | 对局回放目录（`bun test` 会自动指向临时目录） |
 | `MACHIA_CONTEST_MAX_TICKS` | 各游戏默认 | 赛事对局最大回合数 |
 | `MACHIA_AUTH_RATE_LIMIT` | 开启 | 设为 `0` 关闭登录/注册限流（仅测试用） |

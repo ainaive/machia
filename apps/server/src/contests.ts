@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { Database } from "bun:sqlite";
 import { getGame, randomSeed, type MatchPlayerSpec } from "@machia/runner";
 import type { PublicUser } from "./auth";
@@ -303,7 +302,7 @@ export async function submitBot(
     const db = await getDb();
     db.run(
       `UPDATE entries
-       SET status = 'pending', bot_name = ?, reject_reason = NULL, updated_at = ?
+       SET status = 'pending', bot_name = ?, reject_reason = NULL, approved_hash = NULL, updated_at = ?
        WHERE id = ?`,
       [parsed.manifest.name, new Date().toISOString(), entry.id],
     );
@@ -342,12 +341,16 @@ export async function getEntryFiles(contestId: string, entryId: string, viewer: 
 
 export async function reviewEntry(contestId: string, entryId: string, decision: ReviewDecision) {
   const contest = await contestById(contestId);
-  if (contest.status !== "open") {
-    throw new HttpError(409, "Can only review entries while the contest is open");
-  }
   const db = await getDb();
   return withEntryLock(entryId, async () => {
     const entry = await contestEntry(contestId, entryId);
+    // Once a contest starts its field is fixed. The one exception is
+    // re-approving an approved bot, which re-pins the files an admin just
+    // reviewed, e.g. after a restore left them differing from the pin.
+    const reapproval = decision.action === "approve" && entry.status === "approved";
+    if (contest.status !== "open" && !reapproval) {
+      throw new HttpError(409, "Can only review entries while the contest is open");
+    }
     if (decision.action === "approve") {
       if (!entry.bot_name) {
         throw new HttpError(400, "Cannot approve an entry without a bot");
@@ -363,14 +366,18 @@ export async function reviewEntry(contestId: string, entryId: string, decision: 
         throw new HttpError(409, "The bot changed after you reviewed it; review it again");
       }
       db.run(
-        `UPDATE entries SET status = 'approved', reject_reason = NULL, updated_at = ? WHERE id = ?`,
-        [new Date().toISOString(), entryId],
+        `UPDATE entries
+         SET status = 'approved', reject_reason = NULL, approved_hash = ?, updated_at = ?
+         WHERE id = ?`,
+        [current.hash, new Date().toISOString(), entryId],
       );
     } else {
       const why = (decision.reason ?? "").trim();
       if (!why) throw new HttpError(400, "Reject reason is required");
       db.run(
-        `UPDATE entries SET status = 'rejected', reject_reason = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE entries
+         SET status = 'rejected', reject_reason = ?, approved_hash = NULL, updated_at = ?
+         WHERE id = ?`,
         [why, new Date().toISOString(), entryId],
       );
     }
@@ -443,17 +450,27 @@ async function loadEntryPlayer(entryId: string): Promise<MatchPlayerSpec> {
         bot_name: string | null;
         contest_id: string;
         game_id: string;
+        approved_hash: string | null;
       },
       [string]
     >(
-      `SELECT e.id, e.user_id, e.bot_name, e.contest_id, c.game_id
+      `SELECT e.id, e.user_id, e.bot_name, e.contest_id, c.game_id, e.approved_hash
        FROM entries e JOIN contests c ON c.id = e.contest_id WHERE e.id = ?`,
     )
     .get(entryId);
   if (!row || !row.bot_name) throw new Error(`Entry ${entryId} has no bot`);
   const dir = botDirForEntry(defaultUploadsDir(), row.user_id, row.id);
-  const manifestPath = path.join(dir, "manifest.json");
-  const manifest = JSON.parse(await Bun.file(manifestPath).text()) as MatchPlayerSpec["manifest"];
+  // Only the reviewed bytes may run: files that differ from the approved
+  // hash (a mismatched backup restore, a manual edit) fail the game instead.
+  const current = await readBotFiles(dir).catch(() => null);
+  if (!row.approved_hash || current?.hash !== row.approved_hash) {
+    throw new Error(
+      `${row.bot_name}: bot files changed since they were approved; restore the reviewed version, or review and re-approve it, then rerun`,
+    );
+  }
+  const manifestFile = current.files.find((f) => f.name === "manifest.json");
+  if (!manifestFile) throw new Error(`${row.bot_name}: manifest.json is missing`);
+  const manifest = JSON.parse(manifestFile.content) as MatchPlayerSpec["manifest"];
   return {
     botId: row.id,
     botDir: dir,

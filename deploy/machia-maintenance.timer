@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Machia maintenance daily
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=15min
+# Catch up after downtime.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

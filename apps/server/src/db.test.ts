@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { hashBotFiles } from "./botFiles";
 import { APP_SCHEMA_VERSION, migrateApp } from "./db";
 
 function userVersion(db: Database): number {
@@ -108,5 +112,60 @@ describe("app schema migrations", () => {
       .map((r) => r.id);
     // One row per fixture: a played game, else a queued one, else the oldest.
     expect(kept).toEqual(["ab-2", "ac-1", "bc-2", "solo"]);
+  });
+
+  test("entries record the hash of the files that were approved", () => {
+    const db = new Database(":memory:");
+    migrateApp(db);
+    const columns = db
+      .query<{ name: string }, []>(`SELECT name FROM pragma_table_info('entries')`)
+      .all()
+      .map((c) => c.name);
+    expect(columns).toContain("approved_hash");
+  });
+
+  test("upgrading pins existing approvals to the files they would have run", () => {
+    const uploads = mkdtempSync(path.join(tmpdir(), "machia-uploads-"));
+    const previous = process.env.MACHIA_UPLOADS_DIR;
+    process.env.MACHIA_UPLOADS_DIR = uploads;
+    try {
+      // A v2 database: migrate fully, then drop what v3 adds.
+      const db = new Database(":memory:");
+      migrateApp(db);
+      db.exec("ALTER TABLE entries DROP COLUMN approved_hash");
+      db.exec("PRAGMA user_version = 2");
+      const entry = (id: string, status: string, files?: Record<string, string>) => {
+        db.run(
+          `INSERT INTO entries (id, contest_id, user_id, status, bot_name, created_at, updated_at)
+           VALUES (?, 'c1', ?, ?, 'Bot', 'x', 'x')`,
+          [id, `user-${id}`, status],
+        );
+        if (!files) return;
+        mkdirSync(path.join(uploads, `user-${id}`, id), { recursive: true });
+        for (const [name, content] of Object.entries(files)) {
+          writeFileSync(path.join(uploads, `user-${id}`, id, name), content);
+        }
+      };
+      const files = { "bot.js": "// v1", "manifest.json": "{}" };
+      entry("approved", "approved", files);
+      entry("pending", "pending", files);
+      entry("approved-no-files", "approved");
+
+      migrateApp(db);
+      const hashes = Object.fromEntries(
+        db
+          .query<{ id: string; approved_hash: string | null }, []>(`SELECT id, approved_hash FROM entries`)
+          .all()
+          .map((r) => [r.id, r.approved_hash]),
+      );
+      expect(hashes).toEqual({
+        approved: hashBotFiles(Object.entries(files).map(([name, content]) => ({ name, content }))),
+        pending: null,
+        "approved-no-files": null,
+      });
+    } finally {
+      if (previous === undefined) delete process.env.MACHIA_UPLOADS_DIR;
+      else process.env.MACHIA_UPLOADS_DIR = previous;
+    }
   });
 });
