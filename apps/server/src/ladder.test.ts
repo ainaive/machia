@@ -5,7 +5,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { closeDatabase, resetDatabase } from "./db";
 import { app } from "./index";
-import { INITIAL_RATING, K_FACTOR, expectedScore, ratePeriod, type RatedGame } from "./ladder";
+import {
+  INITIAL_RATING,
+  K_FACTOR,
+  expectedScore,
+  ratePeriod,
+  type LadderRow,
+  type RatedGame,
+} from "./ladder";
 
 describe("Elo", () => {
   test("expected scores", () => {
@@ -55,7 +62,8 @@ describe("GET /api/ladder/:gameId", () => {
 
   beforeEach(async () => {
     db = await resetDatabase(path.join(mkdtempSync(path.join(tmpdir(), "machia-ladder-")), "machia.db"));
-    for (const name of ["admin", "alice", "bob", "carol"]) {
+    // Not "admin": other test files leave MACHIA_ADMIN_USERNAME=admin set, which seeds that name.
+    for (const name of ["host", "alice", "bob", "carol"]) {
       db.run(
         `INSERT INTO users (id, name, email, emailVerified, createdAt, updatedAt, username, role)
          VALUES (?, ?, ?, 0, '2026-01-01', '2026-01-01', ?, 'user')`,
@@ -74,11 +82,13 @@ describe("GET /api/ladder/:gameId", () => {
   ) {
     db.run(
       `INSERT INTO contests (id, title, game_id, status, created_at, started_at, finished_at, created_by)
-       VALUES (?, ?, ?, ?, '2026-01-01', ?, ?, 'u_admin')`,
+       VALUES (?, ?, ?, ?, '2026-01-01', ?, ?, 'u_host')`,
       [id, id, opts.game ?? "arena", opts.status ?? "finished", opts.startedAt, opts.finishedAt ?? opts.startedAt],
     );
     const entry = (user: string) => `${id}_${user}`;
-    for (const user of new Set(games.flatMap(([a, b]) => [a, b]))) {
+    const users = new Set<string>();
+    for (const [a, b] of games) users.add(a).add(b);
+    for (const user of users) {
       db.run(
         `INSERT INTO entries (id, contest_id, user_id, status, created_at, updated_at)
          VALUES (?, ?, ?, 'approved', '2026-01-01', '2026-01-01')`,
@@ -96,7 +106,7 @@ describe("GET /api/ladder/:gameId", () => {
 
   async function ladder(gameId: string) {
     const res = await app.request(`/api/ladder/${gameId}`);
-    return { status: res.status, body: (await res.json()) as Record<string, any> };
+    return { status: res.status, body: (await res.json()) as { players: LadderRow[] } };
   }
 
   test("rates finished contests in the order they started, one contest at a time", async () => {
@@ -130,17 +140,15 @@ describe("GET /api/ladder/:gameId", () => {
 
     const { status, body } = await ladder("arena");
     expect(status).toBe(200);
-    const byName = Object.fromEntries(
-      (body.players as Array<Record<string, any>>).map((p) => [p.username, p]),
-    );
+    const byName = Object.fromEntries(body.players.map((p) => [p.username, p]));
     for (const name of ["alice", "bob", "carol"]) {
-      expect(byName[name].rating).toBe(Math.round(ratings.get(`u_${name}`)!));
+      expect(byName[name]!.rating).toBe(Math.round(ratings.get(`u_${name}`)!));
     }
     expect(byName.alice).toMatchObject({ games: 4, wins: 2, draws: 1, losses: 1, contests: 2, lastContestAt: "2026-03-05" });
     expect(byName.bob).toMatchObject({ games: 3, wins: 1, draws: 0, losses: 2, contests: 2 });
     expect(byName.carol).toMatchObject({ games: 3, wins: 1, draws: 1, losses: 1, contests: 1 });
-    expect(body.players.map((p: { rank: number }) => p.rank)).toEqual([1, 2, 3]);
-    expect(body.players[0].rating).toBeGreaterThan(body.players[1].rating);
+    expect(body.players.map((p) => p.rank)).toEqual([1, 2, 3]);
+    expect(body.players[0]!.rating).toBeGreaterThan(body.players[1]!.rating);
   });
 
   test("equal ratings share a rank", async () => {
@@ -149,7 +157,7 @@ describe("GET /api/ladder/:gameId", () => {
       ["bob", "alice", null],
     ]);
     const { body } = await ladder("arena");
-    expect(body.players.map((p: { rank: number; rating: number }) => [p.rank, p.rating])).toEqual([
+    expect(body.players.map((p) => [p.rank, p.rating])).toEqual([
       [1, 1500],
       [1, 1500],
     ]);
