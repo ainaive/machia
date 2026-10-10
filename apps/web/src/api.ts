@@ -82,10 +82,21 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers,
   });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error((data as { error?: string }).error ?? res.statusText);
+  // Not every response is ours: a proxy in front of the API answers errors
+  // such as 502 with an HTML page.
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = undefined;
   }
+  if (!res.ok) {
+    const message = (data as { error?: unknown } | undefined)?.error;
+    if (typeof message === "string" && message) throw new Error(message);
+    throw new Error(`请求失败（${res.status}${res.statusText ? ` ${res.statusText}` : ""}）`);
+  }
+  if (data === undefined) throw new Error("服务器返回了无法识别的响应");
   return data as T;
 }
 
