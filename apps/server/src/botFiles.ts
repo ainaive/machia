@@ -1,10 +1,9 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { BotManifest } from "@machia/protocol";
+import { MAX_BOT_UPLOAD_BYTES, type BotManifest } from "@machia/protocol";
 import { HttpError } from "./errors";
 
 const ALLOWED_EXT = new Set([".js", ".json", ".mjs"]);
-const MAX_BYTES = 256 * 1024;
 const FORBIDDEN_NAMES = new Set(["package.json", "package-lock.json"]);
 
 export interface ParsedBot {
@@ -44,7 +43,7 @@ export function parseBotFiles(
     total += Buffer.byteLength(content, "utf8");
   }
   if (total === 0) throw new HttpError(400, "No bot files uploaded");
-  if (total > MAX_BYTES) {
+  if (total > MAX_BOT_UPLOAD_BYTES) {
     throw new HttpError(400, "Bot files exceed 256KB");
   }
 

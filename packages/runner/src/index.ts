@@ -115,3 +115,4 @@ export function randomSeed(): number {
 export * from "./types";
 export { SubprocessRunner } from "./subprocess";
 export { listGames, getGame } from "./registry";
+export { packBot } from "./pack";

@@ -109,3 +109,5 @@ bun run match quoridor quoridor-rush ./my-bot --seed 5   # 样例 id 或 Bot 目
 ```
 
 会打印排名、分数与种子，并把回放写入 `data/replays/`（`bun run dev` 时可在 `/matches/<id>` 观看）。
+
+参赛上传只接受扁平文件。`bun run pack <Bot 目录>` 会把 Bot 及其依赖（包括 `machia.js`、样例的 `*-lib.js`、npm 包）打包成一个 `bot.js`，连同规范化的 `manifest.json` 输出到 `dist/bots/<名字>/`，直接上传这两个文件即可。

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { packBot } from "@machia/runner";
 import { app } from "./index";
 import { parseBotFiles } from "./botFiles";
 import { resetDatabase, closeDatabase } from "./db";
@@ -222,6 +223,17 @@ describe("bot file validation", () => {
         "arena",
       ),
     ).toThrow(/games must be an array/);
+  });
+
+  test("accepts a sample bot once it is packed", async () => {
+    const out = mkdtempSync(path.join(tmpdir(), "machia-pack-"));
+    await packBot(path.resolve(import.meta.dir, "../../../bots/quoridor-blocker"), out);
+    const files = Object.fromEntries(
+      ["manifest.json", "bot.js"].map((name) => [name, readFileSync(path.join(out, name), "utf8")]),
+    );
+    const parsed = parseBotFiles(files, "quoridor");
+    expect(parsed.manifest.entry).toBe("bot.js");
+    expect(Object.keys(parsed.files).sort()).toEqual(["bot.js", "manifest.json"]);
   });
 
   test("stores the validated manifest, not the raw upload", () => {
