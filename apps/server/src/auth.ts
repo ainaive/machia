@@ -38,26 +38,45 @@ export async function withInviteBypass<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export function publicOrigin(): string {
-  const raw = process.env.MACHIA_PUBLIC_URL?.trim();
+export function publicOrigin(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.MACHIA_PUBLIC_URL?.trim();
   if (raw) return raw.replace(/\/$/, "");
   return "http://localhost:3001";
 }
 
-export function corsOrigins(): string[] {
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+function isLocalOrigin(origin: string): boolean {
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** Dev-server origins are trusted only when the deployment itself is local. */
+export function corsOrigins(env: NodeJS.ProcessEnv = process.env): string[] {
+  const origin = publicOrigin(env);
+  if (!isLocalOrigin(origin)) return [origin];
   const origins = new Set([
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3001",
     "http://localhost",
-    publicOrigin(),
+    origin,
   ]);
   return [...origins];
 }
 
-function authSecret(): string {
-  const secret = process.env.MACHIA_AUTH_SECRET ?? process.env.BETTER_AUTH_SECRET;
+/** Only local setups may fall back to the built-in development secret. */
+export function authSecret(env: NodeJS.ProcessEnv = process.env): string {
+  const secret = env.MACHIA_AUTH_SECRET ?? env.BETTER_AUTH_SECRET;
   if (secret && secret.length >= 32) return secret;
+  if (!isLocalOrigin(publicOrigin(env))) {
+    throw new Error(
+      "MACHIA_AUTH_SECRET must be at least 32 characters when MACHIA_PUBLIC_URL is not a localhost URL",
+    );
+  }
   return "machia-dev-secret-please-change-32ch";
 }
 

@@ -28,6 +28,22 @@ bun run dev
 
 本地未配 SMTP 时，忘记密码会把重置链接打到 **API 进程日志**。生产请设置 `MACHIA_SMTP_*`（见 [docs/deploy.md](docs/deploy.md)）。
 
+### 环境变量
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `HOST` / `PORT` | 全部网卡 / `3001` | API 监听地址；生产用 `127.0.0.1`，只让 nginx 对外 |
+| `MACHIA_PUBLIC_URL` | `http://localhost:3001` | 对外访问的 origin（重置邮件链接、Cookie、CORS） |
+| `MACHIA_AUTH_SECRET` | 本地内置开发密钥 | 会话签名密钥，≥ 32 字符。`MACHIA_PUBLIC_URL` 不是 localhost 时**必填**，否则拒绝启动 |
+| `MACHIA_ADMIN_EMAIL` / `_USERNAME` / `_PASSWORD` | — | 启动时种子管理员 |
+| `MACHIA_DB` | `data/machia.db` | SQLite 路径 |
+| `MACHIA_UPLOADS_DIR` | `data/uploads` | 参赛 Bot 存放目录 |
+| `MACHIA_CONTEST_MAX_TICKS` | 各游戏默认 | 赛事对局最大回合数 |
+| `MACHIA_AUTH_RATE_LIMIT` | 开启 | 设为 `0` 关闭登录/注册限流（仅测试用） |
+| `MACHIA_SMTP_HOST` / `_PORT` / `_USER` / `_PASS` / `_FROM` | — / `587` | 重置密码邮件；未配置时链接写入日志 |
+
+只有 `MACHIA_PUBLIC_URL` 本身是 localhost 时，才额外信任 `localhost:5173` 等开发 origin。
+
 登录管理员后打开 `/admin/invites` 生成邀请码，把码或 `/register?code=…` 发给参赛者。
 
 - Web: http://localhost:5173
@@ -51,7 +67,7 @@ bun run dev
 
 生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。VPS 部署（nginx `:3000` TLS + loopback API）见 [docs/deploy.md](docs/deploy.md)。
 
-**信任模型：** 参赛 Bot 以 Node 子进程运行，第一期没有隔离沙箱。只在可信参赛者 / 自托管场景开赛。
+**信任模型：** 参赛 Bot 以 Node 子进程运行，第一期没有隔离沙箱。Bot 拿不到服务器环境变量（密钥等），但与 API 同属一个系统用户（生产为非 root 的 `machia`），仍能读取 `data/`。只在可信参赛者 / 自托管场景开赛。
 
 ## 仓库结构
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { authSecret, corsOrigins } from "./auth";
 import { app, serverListenConfig } from "./index";
 
 describe("API", () => {
@@ -73,6 +74,16 @@ describe("API", () => {
     expect(res.status).toBe(404);
   });
 
+  test("GET /api/matches/:id rejects path traversal ids", async () => {
+    const res = await app.request("/api/matches/..%2F..%2Fpackage");
+    expect(res.status).toBe(404);
+  });
+
+  test("GET /api/matches/:id/replay rejects path traversal ids", async () => {
+    const res = await app.request("/api/matches/..%2F..%2Fpackage/replay");
+    expect(res.status).toBe(404);
+  });
+
   test("POST /api/matches/demo rejects unknown game", async () => {
     const res = await app.request("/api/matches/demo", {
       method: "POST",
@@ -91,5 +102,34 @@ describe("API", () => {
       port: 3010,
       hostname: "127.0.0.1",
     });
+  });
+});
+
+describe("auth config", () => {
+  const PUBLIC = { MACHIA_PUBLIC_URL: "https://arena.example.com" };
+
+  test("local setups trust the dev origins", () => {
+    const origins = corsOrigins({});
+    expect(origins).toContain("http://localhost:5173");
+    expect(origins).toContain("http://localhost:3001");
+  });
+
+  test("a public origin trusts only itself", () => {
+    expect(corsOrigins(PUBLIC)).toEqual(["https://arena.example.com"]);
+  });
+
+  test("local setups may use the built-in dev secret", () => {
+    expect(authSecret({}).length).toBeGreaterThanOrEqual(32);
+    expect(authSecret({ MACHIA_PUBLIC_URL: "http://127.0.0.1:3001" }).length).toBeGreaterThanOrEqual(32);
+  });
+
+  test("a public origin requires a real secret", () => {
+    expect(() => authSecret(PUBLIC)).toThrow(/MACHIA_AUTH_SECRET/);
+    expect(() => authSecret({ ...PUBLIC, MACHIA_AUTH_SECRET: "too-short" })).toThrow(
+      /MACHIA_AUTH_SECRET/,
+    );
+    const secret = "s".repeat(32);
+    expect(authSecret({ ...PUBLIC, MACHIA_AUTH_SECRET: secret })).toBe(secret);
+    expect(authSecret({ ...PUBLIC, BETTER_AUTH_SECRET: secret })).toBe(secret);
   });
 });

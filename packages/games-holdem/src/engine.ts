@@ -103,6 +103,7 @@ export class HoldemEngine implements GameInstance {
     if (this.finished || this.street === "done") return false;
     const s = this.seats[playerId];
     if (!s || s.folded || s.allIn) return false;
+    if (this.boardRunsOut()) return false;
     return this.toAct === playerId;
   }
 
@@ -166,6 +167,10 @@ export class HoldemEngine implements GameInstance {
       this.payoutShowdown(events);
       this.street = "done";
       this.finished = true;
+    } else if (this.street !== "done" && this.boardRunsOut()) {
+      // Nobody can bet any more: reveal the next street without asking anyone.
+      this.collectBets();
+      this.dealNextStreet(events);
     } else if (this.street !== "done") {
       const actor = this.seats[this.toAct]!;
       let action = this.normalizeAction(actions[this.toAct]);
@@ -183,6 +188,14 @@ export class HoldemEngine implements GameInstance {
 
     for (const s of this.seats) {
       if (s.id !== this.toAct) executed[s.id] ??= "WAIT";
+    }
+
+    if (this.tick + 1 >= this.maxTicks && this.street !== "done") {
+      // Out of time: deal the rest of the board and compare hands before the
+      // snapshot, so the replay's final frame shows the run-out and payout.
+      this.dealRestOfBoard(events);
+      this.payoutShowdown(events);
+      this.street = "done";
     }
 
     const snapshot: TickSnapshot = {
@@ -208,15 +221,7 @@ export class HoldemEngine implements GameInstance {
     };
 
     this.tick += 1;
-    if (this.tick >= this.maxTicks && !this.finished) {
-      if (this.street !== "done") {
-        this.street = "showdown";
-        this.payoutShowdown(events);
-        this.street = "done";
-      }
-      this.finished = true;
-    }
-    if (this.street === "done") this.finished = true;
+    if (this.tick >= this.maxTicks || this.street === "done") this.finished = true;
 
     return snapshot;
   }
@@ -273,7 +278,7 @@ export class HoldemEngine implements GameInstance {
     if (this.toAct !== playerId) return ["WAIT"];
     if (this.street === "done" || this.street === "showdown") return ["WAIT"];
     const s = this.seats[playerId]!;
-    if (s.folded || s.allIn) return ["WAIT"];
+    if (s.folded || s.allIn || this.boardRunsOut()) return ["WAIT"];
     const out: HoldemAction[] = ["FOLD"];
     const toCall = this.currentBet - s.bet;
     if (toCall <= 0) out.push("CHECK");
@@ -361,6 +366,18 @@ export class HoldemEngine implements GameInstance {
     this.skipToNextActor();
   }
 
+  /**
+   * True once at most one player can still bet and that player has nothing
+   * left to call: the remaining streets are dealt without further action.
+   */
+  private boardRunsOut(): boolean {
+    if (this.street === "showdown" || this.street === "done") return false;
+    if (this.seats.filter((s) => !s.folded).length < 2) return false;
+    const contenders = this.seats.filter((s) => !s.folded && !s.allIn);
+    if (contenders.length === 0) return true;
+    return contenders.length === 1 && contenders[0]!.bet >= this.currentBet;
+  }
+
   private bettingRoundComplete(): boolean {
     const contenders = this.seats.filter((s) => !s.folded && !s.allIn);
     if (contenders.length === 0) return true;
@@ -375,6 +392,13 @@ export class HoldemEngine implements GameInstance {
     }
     this.currentBet = 0;
     this.lastRaise = BIG_BLIND;
+  }
+
+  private dealRestOfBoard(events: Array<Record<string, unknown>>) {
+    while (this.street !== "showdown" && this.street !== "done") {
+      this.collectBets();
+      this.dealNextStreet(events);
+    }
   }
 
   private dealNextStreet(events: Array<Record<string, unknown>>) {

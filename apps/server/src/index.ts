@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
+  authSecret,
   corsOrigins,
   getAuth,
   requireAdmin,
@@ -351,6 +352,8 @@ export default {
 };
 
 if (import.meta.main) {
+  // Refuse to boot a public deployment on the built-in dev secret.
+  authSecret();
   kickContestWorker();
   const host = listen.hostname ?? "localhost";
   console.log(`Machia server listening on http://${host}:${listen.port}`);
