@@ -278,3 +278,21 @@ export function startContest(id: string) {
 export function rerunFailedMatches(id: string) {
   return api<ContestDetail>(`/api/contests/${id}/rerun-failed`, { method: "POST" });
 }
+
+/** A player's standing on a game's Elo ladder, from finished contests. */
+export interface LadderPlayer {
+  rank: number;
+  userId: string;
+  username: string;
+  rating: number;
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  contests: number;
+  lastContestAt: string;
+}
+
+export function fetchLadder(gameId: string) {
+  return api<{ players: LadderPlayer[] }>(`/api/ladder/${encodeURIComponent(gameId)}`);
+}

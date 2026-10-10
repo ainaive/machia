@@ -63,10 +63,11 @@ bun run dev
 | `/admin/invites` | 管理员生成、作废邀请码 |
 | `/contests` | 赛事列表（管理员可创建） |
 | `/contests/:id` | 报名、提交 Bot、审批、积分榜 |
+| `/ladder/:gameId` | 各游戏的 Elo 天梯（已结束的正式比赛，按用户计） |
 | `/games/:gameId` | 练习场大厅（样例 Bot，免登录） |
 | `/matches/:matchId` | 对局回放（可刷新） |
 
-在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：邀请码注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1（每对交换座位各打一局，两局同一随机种子），再看积分榜与回放。
+在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：邀请码注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1（每对交换座位各打一局，两局同一随机种子），再看积分榜与回放。比赛结束后计入该游戏的 **天梯**：初始 1500 分、K = 32，每场比赛作为一个结算周期（按赛前积分算每局期望，整场变化一起生效，与局的先后无关）；只算已结束比赛中成功完成的对局，练习场不计。
 
 生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。VPS 部署（nginx `:3000` TLS + loopback API）见 [docs/deploy.md](docs/deploy.md)。
 

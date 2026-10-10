@@ -59,6 +59,12 @@ export function SiteShell({
             >
               比赛
             </Link>
+            <Link
+              to="/ladder"
+              className="text-ink/70 underline-offset-2 hover:text-moss hover:underline"
+            >
+              天梯
+            </Link>
             {user ? (
               <>
                 {user.role === "admin" ? (

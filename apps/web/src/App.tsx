@@ -15,6 +15,7 @@ const ContestListPage = page(() => import("./pages/ContestListPage"), "ContestLi
 const ForgotPasswordPage = page(() => import("./pages/ForgotPasswordPage"), "ForgotPasswordPage");
 const GameLobbyPage = page(() => import("./pages/GameLobbyPage"), "GameLobbyPage");
 const InvitesPage = page(() => import("./pages/InvitesPage"), "InvitesPage");
+const LadderPage = page(() => import("./pages/LadderPage"), "LadderPage");
 const LoginPage = page(() => import("./pages/LoginPage"), "LoginPage");
 const MatchPage = page(() => import("./pages/MatchPage"), "MatchPage");
 const RegisterPage = page(() => import("./pages/RegisterPage"), "RegisterPage");
@@ -43,6 +44,8 @@ export function App() {
           <Route path="/admin/invites" element={<InvitesPage />} />
           <Route path="/contests" element={<ContestListPage />} />
           <Route path="/contests/:contestId" element={<ContestDetailPage />} />
+          <Route path="/ladder" element={<LadderPage />} />
+          <Route path="/ladder/:gameId" element={<LadderPage />} />
           <Route path="/games/:gameId" element={<GameLobbyPage />} />
           <Route path="/matches/:matchId" element={<MatchPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
