@@ -137,6 +137,16 @@ describe.skipIf(!sandboxWorks || !cgroupRoot)("bwrap sandbox cgroup limits (Linu
     }
   }, 30_000);
 
+  test("a limit the kernel refuses fails without leaving a cgroup behind", () => {
+    // Bypasses the server's config validation on purpose: pids.max takes integers.
+    const sandbox = new BwrapSandbox({ cgroupRoot, limits: { pids: 1.5 } });
+    sandbox.setupCgroups();
+    const bots = path.join(cgroupRoot!, "bots");
+    const before = readdirSync(bots).filter((d) => d.startsWith("bot-")).length;
+    expect(() => sandbox.wrap("/usr", ["node", "-e", "0"])).toThrow();
+    expect(readdirSync(bots).filter((d) => d.startsWith("bot-")).length).toBe(before);
+  });
+
   test("the self-test applies the configured limits", async () => {
     await expect(limited().selfTest()).resolves.toBeUndefined();
     // Node can't even start with two tasks; better to learn that at boot.

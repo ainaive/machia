@@ -137,10 +137,16 @@ export class BwrapSandbox {
       // memory.swap.max only exists with swap accounting.
       if (file !== "memory.swap.max" || existsSync(target)) writeFileSync(target, value);
     };
-    set("memory.max", String(Math.floor(this.limits.memoryMb * 1024 * 1024)));
-    set("memory.swap.max", "0");
-    set("pids.max", String(this.limits.pids));
-    set("cpu.max", `${Math.round(this.limits.cpus * 100_000)} 100000`);
+    try {
+      set("memory.max", String(Math.floor(this.limits.memoryMb * 1024 * 1024)));
+      set("memory.swap.max", "0");
+      set("pids.max", String(this.limits.pids));
+      set("cpu.max", `${Math.round(this.limits.cpus * 100_000)} 100000`);
+    } catch (err) {
+      // The kernel rejected a limit: don't leave an empty cgroup per attempt.
+      rmdirSync(cgroup);
+      throw err;
+    }
     return {
       command: "/bin/sh",
       args: ["-c", ENTER_CGROUP, "sh", cgroup, this.bwrapPath, ...inner],
