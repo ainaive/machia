@@ -31,6 +31,36 @@ function sanitizeFilename(name: string): string {
   return base;
 }
 
+// require("./x"), import("./x"), import ... from "./x": relative specifiers only.
+const RELATIVE_LOAD_RE = /(?:require\s*\(\s*|import\s*\(\s*|from\s+)["'](\.{1,2}\/[^"']+)["']/g;
+
+/**
+ * Uploads are flat, so code may only load sibling files that were uploaded
+ * with it. Catches the common mistake of uploading a bot unbundled (e.g. a
+ * sample that needs ../machia.js) at upload time instead of mid-contest.
+ */
+function checkLocalLoads(files: Record<string, string>): void {
+  for (const [name, content] of Object.entries(files)) {
+    if (!/\.m?js$/.test(name)) continue;
+    for (const [, spec] of content.matchAll(RELATIVE_LOAD_RE)) {
+      const target = spec!.slice(2);
+      const present =
+        spec!.startsWith("./") &&
+        !target.includes("/") &&
+        [target, `${target}.js`, `${target}.mjs`, `${target}.json`].some((f) => f in files);
+      if (!present) {
+        const where = spec!.startsWith("../") || target.includes("/")
+          ? "is outside the upload"
+          : "was not uploaded";
+        throw new HttpError(
+          400,
+          `${name} loads "${spec}", which ${where}. Bundle the bot with \`bun run pack <botDir>\` and upload its output.`,
+        );
+      }
+    }
+  }
+}
+
 export function parseBotFiles(
   rawFiles: Record<string, string>,
   gameId: string,
@@ -88,6 +118,8 @@ export function parseBotFiles(
       `Bot games must include this contest's game (${gameId})`,
     );
   }
+
+  checkLocalLoads(files);
 
   // Persist only the validated manifest; the runner reads it back from disk.
   manifest = { name: manifest.name.trim(), runtime: "node", entry, games };

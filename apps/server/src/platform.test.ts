@@ -234,6 +234,25 @@ describe("bot file validation", () => {
     ).toThrow(/games must be an array/);
   });
 
+  test("rejects code that loads files missing from the upload", () => {
+    const manifest = JSON.stringify({ name: "X", runtime: "node", entry: "bot.js", games: ["arena"] });
+    // A raw sample bot needs ../machia.js, which is outside the upload.
+    const sample = readFileSync(path.resolve(import.meta.dir, "../../../bots/turtle/bot.js"), "utf8");
+    expect(() => parseBotFiles({ "manifest.json": manifest, "bot.js": sample }, "arena")).toThrow(
+      /\.\.\/machia\.js.*bun run pack/,
+    );
+    const usesHelper = `const h = require("./helper");\n${WAIT_BOT}`;
+    expect(() => parseBotFiles({ "manifest.json": manifest, "bot.js": usesHelper }, "arena")).toThrow(
+      /"\.\/helper".*not uploaded/,
+    );
+    expect(
+      parseBotFiles(
+        { "manifest.json": manifest, "bot.js": usesHelper, "helper.js": "module.exports = {};" },
+        "arena",
+      ).files["helper.js"],
+    ).toBeDefined();
+  });
+
   test("accepts a sample bot once it is packed", async () => {
     const out = mkdtempSync(path.join(tmpdir(), "machia-pack-"));
     await packBot(path.resolve(import.meta.dir, "../../../bots/quoridor-blocker"), out);
