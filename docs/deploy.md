@@ -98,6 +98,30 @@ Admin is created from those three `MACHIA_ADMIN_*` variables on startup. There i
 
 Password reset uses SMTP when `MACHIA_SMTP_HOST` and `MACHIA_SMTP_FROM` are set; otherwise the API logs the reset URL. `MACHIA_PUBLIC_URL` must be the public origin so reset links in email (and Better Auth cookies) are correct.
 
+## Backups and cleanup
+
+`deploy/machia-maintenance.timer` runs `bun run --filter @machia/server maintenance` daily (04:00 plus up to 15 minutes, catching up after downtime), as `machia` with the same hardening as the API:
+
+- **Database:** a consistent snapshot via SQLite `VACUUM INTO` (safe while the API runs) → `data/backups/machia-<UTC stamp>.db`.
+- **Uploaded bots:** `data/uploads` → `data/backups/uploads-<UTC stamp>.tar.gz`.
+- **Retention:** keeps the newest 14 of each kind.
+- **Replays:** deletes practice replays older than 30 days. Replays referenced by a contest are never deleted.
+
+```bash
+cp deploy/machia-maintenance.service deploy/machia-maintenance.timer /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now machia-maintenance.timer
+systemctl start machia-maintenance.service      # run once now
+journalctl -u machia-maintenance -n 20          # what it did
+```
+
+| Variable | Default | |
+|----------|---------|-|
+| `MACHIA_BACKUP_DIR` | `data/backups` | where backups go (must be in the unit's `ReadWritePaths=`) |
+| `MACHIA_BACKUP_KEEP` | `14` | backups kept per kind |
+| `MACHIA_REPLAY_DAYS` | `30` | practice replay retention; `0` keeps them forever |
+
+Backups stay on the same disk: they protect against mistakes and corruption, not disk loss. Copy `data/backups` off the host for that. To restore: stop `machia`, copy a `machia-*.db` over `data/machia.db` (and extract an `uploads-*.tar.gz` into `data/uploads`), `chown -R machia: /opt/machia/data`, start `machia`.
+
 ## Notes
 
 - Bind the API to loopback (`HOST=127.0.0.1`) so only nginx is public on `:3000`.
