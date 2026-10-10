@@ -25,6 +25,7 @@ import { getDb } from "./db";
 import { sandboxFromEnv } from "./sandbox";
 import { HttpError } from "./errors";
 import { createInvite, deleteInvite, listInvites } from "./invites";
+import { getLadder } from "./ladder";
 import { INVITE_HEADER } from "./invite-code";
 import {
   isMatchRunning,
@@ -294,6 +295,16 @@ app.post("/api/contests/:id/rerun-failed", async (c) => {
     const admin = await requireAdmin(c);
     const detail = await rerunFailedMatches(c.req.param("id"), admin);
     return c.json(detail);
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.get("/api/ladder/:gameId", async (c) => {
+  try {
+    const players = await getLadder(c.req.param("gameId"));
+    return c.json({ players });
   } catch (err) {
     const { message, status } = errorStatus(err);
     return c.json({ error: message }, status);
