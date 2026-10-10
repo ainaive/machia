@@ -109,4 +109,14 @@ describe("app schema migrations", () => {
     // One row per fixture: a played game, else a queued one, else the oldest.
     expect(kept).toEqual(["ab-2", "ac-1", "bc-2", "solo"]);
   });
+
+  test("entries record the hash of the files that were approved", () => {
+    const db = new Database(":memory:");
+    migrateApp(db);
+    const columns = db
+      .query<{ name: string }, []>(`SELECT name FROM pragma_table_info('entries')`)
+      .all()
+      .map((c) => c.name);
+    expect(columns).toContain("approved_hash");
+  });
 });

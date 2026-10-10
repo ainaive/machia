@@ -102,6 +102,8 @@ const MIGRATIONS: Array<(db: Database) => void> = [
        ON contest_matches(contest_id, entry_a_id, entry_b_id)`,
     );
   },
+  // Approval pins the exact files reviewed; games check it before running.
+  (db) => db.exec(`ALTER TABLE entries ADD COLUMN approved_hash TEXT`),
 ];
 
 export const APP_SCHEMA_VERSION = MIGRATIONS.length;

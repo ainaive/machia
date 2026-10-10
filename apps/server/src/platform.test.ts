@@ -697,13 +697,14 @@ describe("auth and contests", () => {
       bobEntry.id,
       "manifest.json",
     );
+    const approvedManifest = readFileSync(manifestPath, "utf8");
     rmSync(manifestPath);
 
     await startContest(contestId);
     const failed = await waitForContest(contestId, admin.cookie);
     const adminMatches = failed.matches as Array<{ status: string; error: string | null }>;
     expect(adminMatches.map((m) => m.status)).toEqual(["error", "error"]);
-    expect(adminMatches[0]!.error).toContain("manifest.json");
+    expect(adminMatches[0]!.error).toMatch(/changed since (it was|they were) approved/);
 
     const bobView = (await json(`/api/contests/${contestId}`, { cookie: bob.cookie })).body
       .matches as Array<{ error: string | null }>;
@@ -715,10 +716,8 @@ describe("auth and contests", () => {
     });
     expect(denied.status).toBe(403);
 
-    writeFileSync(
-      manifestPath,
-      JSON.stringify({ name: "BobBot", runtime: "node", entry: "bot.js", games: ["arena"] }),
-    );
+    // Restore the exact approved bytes; anything else would (rightly) still fail.
+    writeFileSync(manifestPath, approvedManifest);
     const rerun = await json(`/api/contests/${contestId}/rerun-failed`, {
       method: "POST",
       cookie: admin.cookie,
@@ -737,6 +736,24 @@ describe("auth and contests", () => {
     });
     expect(nothing.status).toBe(400);
   }, 30_000);
+
+  test("a bot whose files changed after approval does not play", async () => {
+    const admin = await adminSession();
+    const contestId = await readyContest(admin.cookie, "bob");
+    const entries = (await json(`/api/contests/${contestId}`, { cookie: admin.cookie })).body
+      .entries as Array<{ id: string; userId: string; username: string }>;
+    const bobEntry = entries.find((e) => e.username === "bob")!;
+    // E.g. a database restored from one night with uploads from another.
+    const botPath = path.join(process.env.MACHIA_UPLOADS_DIR!, bobEntry.userId, bobEntry.id, "bot.js");
+    writeFileSync(botPath, `${readFileSync(botPath, "utf8")}// never reviewed\n`);
+
+    await startContest(contestId);
+    const detail = await waitForContest(contestId, admin.cookie);
+    const matches = detail.matches as Array<{ status: string; error: string | null; matchId: string | null }>;
+    expect(matches.map((m) => m.status)).toEqual(["error", "error"]);
+    expect(matches.every((m) => m.matchId === null)).toBe(true);
+    expect(matches[0]!.error).toMatch(/changed since (it was|they were) approved/);
+  }, 25_000);
 
   test("concurrent starts create the fixtures once", async () => {
     const admin = await adminSession();
