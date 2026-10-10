@@ -19,10 +19,14 @@ describe("maintenance", () => {
     live.run("INSERT INTO contests VALUES ('c1')");
 
     const file = backupDatabase(dbPath, path.join(dir, "backups"), NOW);
-    expect(path.basename(file)).toBe("machia-20261010-040000.db");
+    expect(path.basename(file)).toMatch(/^machia-20261010-040000-[0-9a-f]{4}\.db$/);
     expect(new Database(file, { readonly: true }).query("SELECT id FROM contests").all()).toEqual([
       { id: "c1" },
     ]);
+    // Two runs in the same second must not share (and clobber) a file.
+    const again = backupDatabase(dbPath, path.join(dir, "backups"), NOW);
+    expect(again).not.toBe(file);
+    expect(readdirSync(path.join(dir, "backups"))).toHaveLength(2);
     live.close();
   });
 
@@ -32,7 +36,7 @@ describe("maintenance", () => {
     writeFileSync(path.join(dir, "uploads", "u1", "e1", "bot.js"), "// bot");
 
     const file = backupUploads(path.join(dir, "uploads"), path.join(dir, "backups"), NOW)!;
-    expect(path.basename(file)).toBe("uploads-20261010-040000.tar.gz");
+    expect(path.basename(file)).toMatch(/^uploads-20261010-040000-[0-9a-f]{4}\.tar\.gz$/);
     const listing = spawnSync("tar", ["-tzf", file], { encoding: "utf8" }).stdout;
     expect(listing).toContain("u1/e1/bot.js");
     expect(backupUploads(path.join(dir, "missing"), path.join(dir, "backups"), NOW)).toBeNull();
@@ -57,22 +61,22 @@ describe("maintenance", () => {
   test("keeps the newest backups of each kind", () => {
     const dir = temp();
     const names = [
-      "machia-20261001-040000.db",
-      "machia-20261002-040000.db",
-      "machia-20261003-040000.db",
-      "uploads-20261001-040000.tar.gz",
-      "uploads-20261003-040000.tar.gz",
+      "machia-20261001-040000-a1b2.db",
+      "machia-20261002-040000-c3d4.db",
+      "machia-20261003-040000-e5f6.db",
+      "uploads-20261001-040000-0a0b.tar.gz",
+      "uploads-20261003-040000-0c0d.tar.gz",
       "notes.txt",
     ];
     for (const n of names) writeFileSync(path.join(dir, n), "");
 
-    expect(pruneBackups(dir, 2).sort()).toEqual(["machia-20261001-040000.db"]);
+    expect(pruneBackups(dir, 2).sort()).toEqual(["machia-20261001-040000-a1b2.db"]);
     expect(readdirSync(dir).sort()).toEqual([
-      "machia-20261002-040000.db",
-      "machia-20261003-040000.db",
+      "machia-20261002-040000-c3d4.db",
+      "machia-20261003-040000-e5f6.db",
       "notes.txt",
-      "uploads-20261001-040000.tar.gz",
-      "uploads-20261003-040000.tar.gz",
+      "uploads-20261001-040000-0a0b.tar.gz",
+      "uploads-20261003-040000-0c0d.tar.gz",
     ]);
   });
 

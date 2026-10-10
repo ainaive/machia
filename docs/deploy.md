@@ -136,8 +136,8 @@ systemd-run --wait --pipe --collect -p User=machia -p NoNewPrivileges=yes -p Pri
 
 `deploy/machia-maintenance.timer` runs `bun run --filter @machia/server maintenance` daily (04:00 plus up to 15 minutes, catching up after downtime), as `machia` with the same hardening as the API:
 
-- **Database:** a consistent snapshot via SQLite `VACUUM INTO` (safe while the API runs) → `data/backups/machia-<UTC stamp>.db`.
-- **Uploaded bots:** `data/uploads` → `data/backups/uploads-<UTC stamp>.tar.gz`.
+- **Database:** a consistent snapshot via SQLite `VACUUM INTO` (safe while the API runs) → `data/backups/machia-<UTC stamp>-<4 hex>.db`.
+- **Uploaded bots:** `data/uploads` → `data/backups/uploads-<UTC stamp>-<4 hex>.tar.gz`. (The random suffix keeps two runs in the same second apart.)
 - **Retention:** keeps the newest 14 of each kind.
 - **Replays:** deletes practice replays older than 30 days. Replays referenced by a contest are never deleted.
 

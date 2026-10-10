@@ -9,13 +9,16 @@
  */
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { defaultDbPath, defaultUploadsDir } from "./db";
 import { replaysDir } from "./matches";
 
+/** UTC time plus a random suffix: two runs in the same second must not share a file. */
 function stamp(now: Date): string {
-  return now.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+  const time = now.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+  return `${time}-${randomBytes(2).toString("hex")}`;
 }
 
 /**
@@ -58,7 +61,8 @@ export function backupUploads(uploadsDir: string, backupDir: string, now = new D
   });
 }
 
-const BACKUP_RE = /^(machia|uploads)-\d{8}-\d{6}\.(db|tar\.gz)$/;
+// Older backups have no random suffix; keep rotating them too.
+const BACKUP_RE = /^(machia|uploads)-\d{8}-\d{6}(?:-[0-9a-f]{4})?\.(db|tar\.gz)$/;
 
 /** Deletes all but the newest `keep` backups of each kind; returns what it deleted. */
 export function pruneBackups(backupDir: string, keep: number): string[] {
