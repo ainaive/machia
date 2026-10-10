@@ -645,6 +645,8 @@ describe("auth and contests", () => {
       const approving = reviewEntry(contestId, entry.id, { action: "approve", hash });
       await Bun.sleep(20);
       await Promise.allSettled([approving, submitBot(contestId, bobUser, swapped)]);
+      // The approval really went through the slowed read, so the race was exercised.
+      expect(slowRead).toHaveBeenCalledTimes(1);
     } finally {
       slowRead.mockRestore();
     }
