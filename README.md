@@ -102,4 +102,10 @@ CI：`.github/workflows/ci.yml`（PR 与 `main`）。给 agent / 贡献者的约
 
 ## 添加 Bot
 
-见 [docs/bot-protocol.md](docs/bot-protocol.md)。
+见 [docs/bot-protocol.md](docs/bot-protocol.md)。不用启动服务器也能本地对战：
+
+```bash
+bun run match quoridor quoridor-rush ./my-bot --seed 5   # 样例 id 或 Bot 目录
+```
+
+会打印排名、分数与种子，并把回放写入 `data/replays/`（`bun run dev` 时可在 `/matches/<id>` 观看）。
