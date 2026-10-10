@@ -77,6 +77,7 @@ describe("SubprocessRunner", () => {
       await Bun.sleep(600);
       expect(await bot.requestAction({ tick: 2 })).toMatchObject({ tick: 2 });
       expect(await bot.requestAction({ tick: 3 })).toMatchObject({ tick: 3 });
+      expect(bot.stats()).toEqual({ timeouts: 2, invalidReplies: 0, crashed: false });
     } finally {
       await bot.destroy();
     }
@@ -99,6 +100,20 @@ describe("SubprocessRunner", () => {
     try {
       expect(await bot.requestAction({ tick: 0 })).toBeNull();
       expect(await bot.requestAction({ tick: 1 })).toMatchObject({ tick: 1 });
+      expect(bot.stats()).toEqual({ timeouts: 0, invalidReplies: 1, crashed: false });
+    } finally {
+      await bot.destroy();
+    }
+  });
+
+  test("a bot that exits mid-match is reported as crashed", async () => {
+    const runner = new SubprocessRunner({ timeoutMs: 5000 });
+    const bot = await runner.spawn(fixture("quitter"));
+    try {
+      expect(await bot.requestAction({ tick: 0 })).toMatchObject({ action: "WAIT" });
+      await Bun.sleep(200);
+      expect(await bot.requestAction({ tick: 1 })).toBeNull();
+      expect(bot.stats()).toEqual({ timeouts: 0, invalidReplies: 0, crashed: true });
     } finally {
       await bot.destroy();
     }

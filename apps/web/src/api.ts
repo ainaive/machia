@@ -35,12 +35,19 @@ export interface TickSnapshot {
   [key: string]: unknown;
 }
 
+/** Protocol health for one bot in one match (absent in older replays). */
+export interface BotStats {
+  timeouts: number;
+  invalidReplies: number;
+  crashed: boolean;
+}
+
 export interface MatchReplay {
   id: string;
   gameId: string;
   createdAt: string;
   mapSize: number;
-  players: Array<{ playerId: number; botId: string; name: string }>;
+  players: Array<{ playerId: number; botId: string; name: string; stats?: BotStats }>;
   ticks: TickSnapshot[];
   results: PlayerResult[];
   totalTicks: number;

@@ -67,6 +67,8 @@ Write **exactly one line per observation**, in order. stdout is reserved for rep
 - A reply line over 64KB counts as invalid JSON.
 - Skipping a reply or writing extra stdout lines shifts every later reply by one tick.
 
+Each replay records per-bot `stats` — `timeouts`, `invalidReplies`, and `crashed` (the process exited while still being asked for actions) — and the replay viewer flags any bot with problems. Check them first when a bot plays worse than expected.
+
 ### `game_end`
 
 ```json
