@@ -29,6 +29,8 @@ export interface BotRunner {
     botId: string;
     botDir: string;
     manifest: BotManifest;
+    /** Directory a sandbox exposes (read-only); must contain botDir. Defaults to botDir. */
+    mountDir?: string;
   }): Promise<BotHandle>;
 }
 

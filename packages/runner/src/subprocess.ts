@@ -7,6 +7,7 @@ import {
   type BotManifest,
   type ServerMessage,
 } from "@machia/protocol";
+import { SANDBOX_APP_DIR, type BwrapSandbox } from "./sandbox";
 import type { BotHandle, BotRunner, BotStats } from "./types";
 
 export interface SubprocessRunnerOptions {
@@ -14,6 +15,8 @@ export interface SubprocessRunnerOptions {
   /** Timeout for the first observation only, which also covers process startup. */
   startupTimeoutMs?: number;
   nodePath?: string;
+  /** Run each bot inside this sandbox instead of as a plain child process. */
+  sandbox?: BwrapSandbox;
 }
 
 class SubprocessBotHandle implements BotHandle {
@@ -27,6 +30,7 @@ class SubprocessBotHandle implements BotHandle {
   private started = false;
   private destroyed = false;
   private readonly counts: BotStats = { timeouts: 0, invalidReplies: 0, crashed: false };
+  private readonly release: () => Promise<void>;
 
   constructor(args: {
     playerId: number;
@@ -35,6 +39,7 @@ class SubprocessBotHandle implements BotHandle {
     child: ChildProcessWithoutNullStreams;
     timeoutMs: number;
     startupTimeoutMs: number;
+    release?: () => Promise<void>;
   }) {
     this.playerId = args.playerId;
     this.botId = args.botId;
@@ -42,6 +47,7 @@ class SubprocessBotHandle implements BotHandle {
     this.child = args.child;
     this.timeoutMs = args.timeoutMs;
     this.startupTimeoutMs = args.startupTimeoutMs;
+    this.release = args.release ?? (async () => {});
     this.replies = new ReplyReader(args.child);
     // Writes can race the bot exiting; EPIPE must not crash the server.
     args.child.stdin.on("error", () => {});
@@ -96,6 +102,7 @@ class SubprocessBotHandle implements BotHandle {
     }
     // Processes the bot started share its group and may outlive it.
     this.signalGroup("SIGKILL");
+    await this.release();
   }
 
   private hasExited(): boolean {
@@ -256,6 +263,7 @@ export class SubprocessRunner implements BotRunner {
   private readonly timeoutMs: number;
   private readonly startupTimeoutMs: number;
   private readonly nodePath: string;
+  private readonly sandbox?: BwrapSandbox;
 
   constructor(options: SubprocessRunnerOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_BOT_TIMEOUT_MS;
@@ -264,6 +272,7 @@ export class SubprocessRunner implements BotRunner {
       options.startupTimeoutMs ?? DEFAULT_BOT_STARTUP_TIMEOUT_MS,
     );
     this.nodePath = options.nodePath ?? "node";
+    this.sandbox = options.sandbox;
   }
 
   async spawn(args: {
@@ -271,6 +280,7 @@ export class SubprocessRunner implements BotRunner {
     botId: string;
     botDir: string;
     manifest: BotManifest;
+    mountDir?: string;
   }): Promise<BotHandle> {
     if (args.manifest.runtime !== "node") {
       throw new Error(`Unsupported runtime: ${args.manifest.runtime}`);
@@ -280,13 +290,31 @@ export class SubprocessRunner implements BotRunner {
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
       throw new Error(`Bot entry must stay inside its folder: ${args.manifest.entry}`);
     }
-    const child = spawn(this.nodePath, [entry], {
-      cwd: args.botDir,
-      // Own process group, so destroy() can signal the bot and its children.
-      detached: true,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: botEnv(args.playerId),
-    });
+    // In the sandbox only mountDir is visible, at /app; the bot starts in its own folder.
+    let sandboxed: ReturnType<BwrapSandbox["wrap"]> | undefined;
+    if (this.sandbox) {
+      const mountDir = path.resolve(args.mountDir ?? args.botDir);
+      const botRel = path.relative(mountDir, path.resolve(args.botDir));
+      if (botRel.startsWith("..") || path.isAbsolute(botRel)) {
+        throw new Error(`Bot folder must be inside its mount directory: ${args.botDir}`);
+      }
+      const inside = (...parts: string[]) =>
+        path.posix.join(SANDBOX_APP_DIR, ...parts.map((p) => p.split(path.sep).join("/")));
+      sandboxed = this.sandbox.wrap(mountDir, [this.nodePath, inside(botRel, rel)], inside(botRel));
+    }
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      child = spawn(sandboxed?.command ?? this.nodePath, sandboxed?.args ?? [entry], {
+        cwd: args.botDir,
+        // Own process group, so destroy() can signal the bot and its children.
+        detached: true,
+        stdio: ["pipe", "pipe", "pipe"],
+        env: botEnv(args.playerId),
+      });
+    } catch (err) {
+      await sandboxed?.release();
+      throw err;
+    }
 
     return new SubprocessBotHandle({
       playerId: args.playerId,
@@ -295,6 +323,7 @@ export class SubprocessRunner implements BotRunner {
       child,
       timeoutMs: this.timeoutMs,
       startupTimeoutMs: this.startupTimeoutMs,
+      release: sandboxed?.release,
     });
   }
 }
