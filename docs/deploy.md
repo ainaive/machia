@@ -119,7 +119,7 @@ At boot the API enables the cgroup controllers and runs a sandbox self-test. If 
 |----------|---------|-|
 | `MACHIA_SANDBOX` | `off` (unit: `bwrap`) | `bwrap` or `off` |
 | `MACHIA_SANDBOX_CGROUP` | `auto` | the service's delegated cgroup; a path; or `off` for no resource limits |
-| `MACHIA_BOT_MEMORY_MB` / `MACHIA_BOT_PIDS` / `MACHIA_BOT_CPUS` | `256` / `32` / `1` | per-bot limits |
+| `MACHIA_BOT_MEMORY_MB` / `MACHIA_BOT_PIDS` / `MACHIA_BOT_CPUS` | `256` / `32` / `1` | per-bot limits; tasks must be a whole number, CPUs ≥ 0.01. Node needs about a dozen tasks to start — the boot self-test runs Node under these exact limits and refuses to start if it can't |
 
 To run the sandbox tests on the host, as the service user with the unit's hardening (from a checkout readable by `machia`):
 
