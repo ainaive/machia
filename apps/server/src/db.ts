@@ -123,7 +123,7 @@ export function migrateApp(db: Database): void {
   }
 }
 
-function defaultDbPath(): string {
+export function defaultDbPath(): string {
   return process.env.MACHIA_DB ?? DEFAULT_DB;
 }
 
