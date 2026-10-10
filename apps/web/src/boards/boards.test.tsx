@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { MatchReplay, TickSnapshot } from "./api";
-import { Board } from "./Board";
+import type { MatchReplay, TickSnapshot } from "../api";
+import { Board } from ".";
 
 /** Replays shaped like the engines' (see each game's snapshot), but tiny. */
 function replay(gameId: string, mapSize: number, snap: Partial<TickSnapshot>): MatchReplay {

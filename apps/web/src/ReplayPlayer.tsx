@@ -10,7 +10,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { BotStats, MatchReplay } from "./api";
-import { Board } from "./Board";
+import { Board } from "./boards";
 import { gameAccent } from "./gameAccent";
 import { RobotToken, playerColor } from "./sprites";
 
