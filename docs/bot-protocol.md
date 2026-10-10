@@ -2,6 +2,17 @@
 
 Bots are long-lived Node.js processes. The platform talks over **stdin/stdout**, one JSON object per line.
 
+## Quick start
+
+From a clone of this repo (`bun install` first):
+
+1. **Start from a sample** close to what you want, inside `bots/` so the SDK path resolves, and rename it:
+   `cp -r bots/turtle bots/my-bot`, then set `name` (and `games`) in `bots/my-bot/manifest.json`.
+2. **Write your logic** in `act(obs)` — see [SDK](#sdk) below and your game's section for observation fields and actions.
+3. **Play it offline**: `bun run match arena my-bot turtle`. It prints ranks, scores and the seed, and flags any bot that timed out, sent invalid replies or crashed. `--seed N` replays a match exactly; `--ticks N` shortens it. Your bot's stderr (`log(...)`) shows as it plays.
+4. **Watch the replay**: with `bun run dev` running, open the printed `/matches/<id>` link. Bots in `bots/` also appear in the local practice lobby.
+5. **Package and upload**: `bun run pack bots/my-bot`, then upload `dist/bots/my-bot/manifest.json` and `dist/bots/my-bot/bot.js` on the contest page.
+
 ## Layout
 
 ```text
@@ -25,10 +36,10 @@ bots/<bot-id>/
 
 ### SDK
 
-[`bots/machia.js`](../bots/machia.js) handles the protocol for you: it parses messages, calls your `act(observation)` (sync or async), and writes exactly one reply per observation, in order, falling back to `WAIT` if `act` throws or returns nothing. Copy it next to your `bot.js`:
+[`bots/machia.js`](../bots/machia.js) handles the protocol for you: it parses messages, calls your `act(observation)` (sync or async), and writes exactly one reply per observation, in order, falling back to `WAIT` if `act` throws or returns nothing. Bots under `bots/` load it as `../machia.js`; elsewhere, copy it next to your `bot.js`. `bun run pack` bundles it into the upload either way.
 
 ```js
-const { run, log } = require("./machia.js");
+const { run, log } = require("../machia.js");
 
 run({
   act(obs) {

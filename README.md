@@ -102,7 +102,7 @@ CI：`.github/workflows/ci.yml`（PR 与 `main`）。给 agent / 贡献者的约
 
 ## 添加 Bot
 
-见 [docs/bot-protocol.md](docs/bot-protocol.md)。不用启动服务器也能本地对战：
+五步上手见 [docs/bot-protocol.md#quick-start](docs/bot-protocol.md#quick-start)：复制样例到 `bots/<名字>/`，用 [`bots/machia.js`](bots/machia.js) SDK 写 `act(obs)`，本地对战，打包上传。不用启动服务器也能本地对战：
 
 ```bash
 bun run match quoridor quoridor-rush ./my-bot --seed 5   # 样例 id 或 Bot 目录
