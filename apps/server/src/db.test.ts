@@ -71,4 +71,42 @@ describe("app schema migrations", () => {
     expect(db.query(`SELECT seed FROM contest_matches WHERE id = 'cm1'`).get()).toEqual({ seed: 7 });
     expect(() => insert("cm2")).toThrow(/UNIQUE/);
   });
+
+  test("an upgrade collapses duplicate fixtures left by the old start race", () => {
+    const db = new Database(":memory:");
+    // contest_matches as it existed before versioning (user_version 0).
+    db.exec(`
+      CREATE TABLE contest_matches (
+        id TEXT PRIMARY KEY, contest_id TEXT NOT NULL,
+        entry_a_id TEXT NOT NULL, entry_b_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done', 'error')),
+        match_id TEXT, winner_entry_id TEXT, score_a REAL, score_b REAL,
+        rank_a INTEGER, rank_b INTEGER, error TEXT, created_at TEXT NOT NULL
+      );
+    `);
+    const insert = (id: string, a: string, b: string, status: string) =>
+      db.run(
+        `INSERT INTO contest_matches (id, contest_id, entry_a_id, entry_b_id, status, created_at)
+         VALUES (?, 'c1', ?, ?, ?, '2026-09-20')`,
+        [id, a, b, status],
+      );
+    // Double start: every pair inserted twice. Some copies already played.
+    insert("ab-1", "e1", "e2", "pending");
+    insert("ab-2", "e1", "e2", "done");
+    insert("ac-1", "e1", "e3", "done");
+    insert("ac-2", "e1", "e3", "done");
+    insert("bc-1", "e2", "e3", "error");
+    insert("bc-2", "e2", "e3", "pending");
+    insert("solo", "e3", "e4", "pending");
+
+    migrateApp(db);
+
+    expect(userVersion(db)).toBe(APP_SCHEMA_VERSION);
+    const kept = db
+      .query<{ id: string }, []>(`SELECT id FROM contest_matches ORDER BY id`)
+      .all()
+      .map((r) => r.id);
+    // One row per fixture: a played game, else a queued one, else the oldest.
+    expect(kept).toEqual(["ab-2", "ac-1", "bc-2", "solo"]);
+  });
 });

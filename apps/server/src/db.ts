@@ -81,6 +81,22 @@ const MIGRATIONS: Array<(db: Database) => void> = [
   // Fair contests: each game records its seed; a fixture is created once.
   (db) => {
     db.exec(`ALTER TABLE contest_matches ADD COLUMN seed INTEGER`);
+    // The old check-then-insert start could create a contest's fixtures
+    // twice. Keep one row per fixture so the unique index can be built:
+    // a played game first, then one still queued, then an errored one;
+    // the oldest row within each.
+    db.exec(`
+      DELETE FROM contest_matches WHERE rowid IN (
+        SELECT rowid FROM (
+          SELECT rowid, ROW_NUMBER() OVER (
+            PARTITION BY contest_id, entry_a_id, entry_b_id
+            ORDER BY CASE status WHEN 'done' THEN 0 WHEN 'error' THEN 2 ELSE 1 END, rowid
+          ) AS n
+          FROM contest_matches
+        )
+        WHERE n > 1
+      )
+    `);
     db.exec(
       `CREATE UNIQUE INDEX idx_contest_matches_fixture
        ON contest_matches(contest_id, entry_a_id, entry_b_id)`,
