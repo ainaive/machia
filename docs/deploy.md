@@ -161,6 +161,6 @@ Backups stay on the same disk: they protect against mistakes and corruption, not
 
 - Bind the API to loopback (`HOST=127.0.0.1`) so only nginx is public on `:3000`.
 - Without the sandbox (`MACHIA_SANDBOX` unset or `off`), bots share the `machia` user with the API and can read `data/` (DB, other uploads) and use the network — only approve bots you trust in that mode.
-- SPA routes need History API fallback (`try_files $uri /index.html`).
+- SPA routes need History API fallback (`try_files $uri /index.html`). `/assets/` is excluded from it and cached for a year (file names change with content); `index.html` is always revalidated, so a deploy reaches visitors on their next page load. A tab opened before a deploy reloads itself the first time it needs a page the new build replaced.
 - nginx gzip for `application/json` keeps match replays small (hundreds of KB uncompressed).
 - This host previously ran Agrippa on `:3000` / `127.0.0.1:3001`. Its Docker stack is stopped and `/etc/nginx/sites-enabled/agrippa` removed; configs remain under `/opt/agrippa` and `sites-available/agrippa`.
