@@ -70,7 +70,7 @@ describe("maintenance", () => {
     ];
     for (const n of names) writeFileSync(path.join(dir, n), "");
 
-    expect(pruneBackups(dir, 2).sort()).toEqual(["machia-20261001-040000-a1b2.db"]);
+    expect(pruneBackups(dir, 2)).toEqual({ deleted: ["machia-20261001-040000-a1b2.db"], failed: [] });
     expect(readdirSync(dir).sort()).toEqual([
       "machia-20261002-040000-c3d4.db",
       "machia-20261003-040000-e5f6.db",
@@ -78,6 +78,20 @@ describe("maintenance", () => {
       "uploads-20261001-040000-0a0b.tar.gz",
       "uploads-20261003-040000-0c0d.tar.gz",
     ]);
+  });
+
+  test("one backup that can't be removed doesn't stop the rest of the cleanup", () => {
+    const dir = temp();
+    writeFileSync(path.join(dir, "machia-20261001-040000-0001.db"), "");
+    // A directory with a backup's name: rmSync without recursive refuses it.
+    mkdirSync(path.join(dir, "machia-20261002-040000-0002.db", "x"), { recursive: true });
+    writeFileSync(path.join(dir, "machia-20261003-040000-0003.db"), "");
+    writeFileSync(path.join(dir, "machia-20261004-040000-0004.db"), "");
+
+    expect(pruneBackups(dir, 1)).toEqual({
+      deleted: ["machia-20261003-040000-0003.db", "machia-20261001-040000-0001.db"],
+      failed: ["machia-20261002-040000-0002.db"],
+    });
   });
 
   test("deletes old practice replays but never a contest's", () => {
@@ -91,8 +105,8 @@ describe("maintenance", () => {
     replay("m_old_contest", 40);
     replay("m_new_practice", 3);
 
-    const deleted = pruneReplays(dir, new Set(["m_old_contest"]), 30, NOW);
-    expect(deleted).toEqual(["m_old_practice"]);
+    const pruned = pruneReplays(dir, new Set(["m_old_contest"]), 30, NOW);
+    expect(pruned).toEqual({ deleted: ["m_old_practice"], failed: [] });
     expect(readdirSync(dir).sort()).toEqual(["m_new_practice.json", "m_old_contest.json"]);
   });
 });

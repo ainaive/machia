@@ -64,43 +64,58 @@ export function backupUploads(uploadsDir: string, backupDir: string, now = new D
 // Older backups have no random suffix; keep rotating them too.
 const BACKUP_RE = /^(machia|uploads)-\d{8}-\d{6}(?:-[0-9a-f]{4})?\.(db|tar\.gz)$/;
 
-/** Deletes all but the newest `keep` backups of each kind; returns what it deleted. */
-export function pruneBackups(backupDir: string, keep: number): string[] {
-  if (!existsSync(backupDir)) return [];
+/** What a cleanup pass removed, and what it couldn't (it carries on past those). */
+export interface Pruned {
+  deleted: string[];
+  failed: string[];
+}
+
+/** Deletes all but the newest `keep` backups of each kind. */
+export function pruneBackups(backupDir: string, keep: number): Pruned {
+  const pruned: Pruned = { deleted: [], failed: [] };
+  if (!existsSync(backupDir)) return pruned;
   const byKind = new Map<string, string[]>();
   for (const name of readdirSync(backupDir)) {
     const match = BACKUP_RE.exec(name);
     if (match) byKind.set(match[1]!, [...(byKind.get(match[1]!) ?? []), name]);
   }
-  const deleted: string[] = [];
   for (const names of byKind.values()) {
     for (const name of names.sort().reverse().slice(keep)) {
-      rmSync(path.join(backupDir, name));
-      deleted.push(name);
+      try {
+        rmSync(path.join(backupDir, name));
+        pruned.deleted.push(name);
+      } catch {
+        pruned.failed.push(name);
+      }
     }
   }
-  return deleted;
+  return pruned;
 }
 
-/** Deletes replays older than `maxAgeDays` unless a contest game uses them; returns their ids. */
+/** Deletes replays older than `maxAgeDays` unless a contest game uses them (by id). */
 export function pruneReplays(
   dir: string,
   contestMatchIds: Set<string>,
   maxAgeDays: number,
   now = new Date(),
-): string[] {
-  if (!existsSync(dir)) return [];
+): Pruned {
+  const pruned: Pruned = { deleted: [], failed: [] };
+  if (!existsSync(dir)) return pruned;
   const cutoff = now.getTime() - maxAgeDays * 86_400_000;
-  const deleted: string[] = [];
   for (const name of readdirSync(dir)) {
     if (!name.endsWith(".json")) continue;
     const id = name.slice(0, -".json".length);
-    const file = path.join(dir, name);
-    if (contestMatchIds.has(id) || statSync(file).mtimeMs >= cutoff) continue;
-    rmSync(file);
-    deleted.push(id);
+    if (contestMatchIds.has(id)) continue;
+    try {
+      const file = path.join(dir, name);
+      if (statSync(file).mtimeMs >= cutoff) continue;
+      rmSync(file);
+      pruned.deleted.push(id);
+    } catch {
+      pruned.failed.push(id);
+    }
   }
-  return deleted;
+  return pruned;
 }
 
 function count(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -120,7 +135,10 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
   console.log(`backed up database → ${backupDatabase(dbPath, backupDir)}`);
   const uploads = backupUploads(defaultUploadsDir(), backupDir);
   console.log(uploads ? `backed up uploads → ${uploads}` : "no uploads to back up");
-  console.log(`pruned ${pruneBackups(backupDir, keep).length} old backups (keeping ${keep} of each)`);
+  const failed: string[] = [];
+  const backups = pruneBackups(backupDir, keep);
+  failed.push(...backups.failed.map((name) => `backup ${name}`));
+  console.log(`pruned ${backups.deleted.length} old backups (keeping ${keep} of each)`);
 
   if (replayDays > 0) {
     const db = new Database(dbPath, { readonly: true });
@@ -133,8 +151,15 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
         .map((r) => r.match_id),
     );
     db.close();
-    const removed = pruneReplays(replaysDir(), contestIds, replayDays);
-    console.log(`deleted ${removed.length} practice replays older than ${replayDays} days`);
+    const replays = pruneReplays(replaysDir(), contestIds, replayDays);
+    failed.push(...replays.failed.map((id) => `replay ${id}`));
+    console.log(`deleted ${replays.deleted.length} practice replays older than ${replayDays} days`);
+  }
+
+  // Both passes ran to the end; now make the run fail so systemd records it.
+  if (failed.length > 0) {
+    console.error(`could not remove: ${failed.join(", ")}`);
+    process.exitCode = 1;
   }
 }
 
