@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { MAX_BOT_UPLOAD_BYTES, type BotManifest } from "@machia/protocol";
@@ -171,4 +172,14 @@ export async function readBotFiles(dir: string): Promise<{ hash: string; files: 
     names.map(async (name) => ({ name, content: await readFile(path.join(dir, name), "utf8") })),
   );
   return { hash: hashBotFiles(files), files };
+}
+
+/** Hash of a stored bot's files (as readBotFiles computes it), or null if they can't be read. */
+export function hashBotDirSync(dir: string): string | null {
+  try {
+    const names = readdirSync(dir);
+    return hashBotFiles(names.map((name) => ({ name, content: readFileSync(path.join(dir, name), "utf8") })));
+  } catch {
+    return null;
+  }
 }

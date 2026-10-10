@@ -6,7 +6,7 @@ import { packBot } from "@machia/runner";
 import { app } from "./index";
 import * as botFiles from "./botFiles";
 import { parseBotFiles } from "./botFiles";
-import { resetDatabase, closeDatabase } from "./db";
+import { closeDatabase, getDb, resetDatabase } from "./db";
 import {
   getEntryFiles,
   reviewEntry,
@@ -754,6 +754,35 @@ describe("auth and contests", () => {
     expect(matches.every((m) => m.matchId === null)).toBe(true);
     expect(matches[0]!.error).toMatch(/changed since (it was|they were) approved/);
   }, 25_000);
+
+  test("an admin can re-approve a reviewed bot after the contest started", async () => {
+    const admin = await adminSession();
+    const contestId = await readyContest(admin.cookie, "bob");
+    const entries = (await json(`/api/contests/${contestId}`, { cookie: admin.cookie })).body
+      .entries as Array<{ id: string; username: string }>;
+    const bobEntry = entries.find((e) => e.username === "bob")!;
+    // Lost approval pin (e.g. a restore that doesn't match): games can't run.
+    (await getDb()).run(`UPDATE entries SET approved_hash = NULL WHERE id = ?`, [bobEntry.id]);
+
+    await startContest(contestId);
+    const failed = await waitForContest(contestId, admin.cookie);
+    expect((failed.matches as Array<{ status: string }>).map((m) => m.status)).toEqual(["error", "error"]);
+    expect((failed.contest as { status: string }).status).toBe("finished");
+
+    // Re-approving the reviewed files works even though the contest is no longer open…
+    expect((await approveEntry(contestId, bobEntry.id, admin.cookie)).status).toBe(200);
+    // …but nothing else about the field can change after the start.
+    const reject = await json(`/api/contests/${contestId}/entries/${bobEntry.id}/reject`, {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ reason: "late" }),
+    });
+    expect(reject.status).toBe(409);
+
+    await json(`/api/contests/${contestId}/rerun-failed`, { method: "POST", cookie: admin.cookie });
+    const done = await waitForContest(contestId, admin.cookie);
+    expect((done.matches as Array<{ status: string }>).map((m) => m.status)).toEqual(["done", "done"]);
+  }, 30_000);
 
   test("concurrent starts create the fixtures once", async () => {
     const admin = await adminSession();

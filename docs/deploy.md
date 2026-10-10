@@ -120,7 +120,7 @@ journalctl -u machia-maintenance -n 20          # what it did
 | `MACHIA_BACKUP_KEEP` | `14` | backups kept per kind |
 | `MACHIA_REPLAY_DAYS` | `30` | practice replay retention; `0` keeps them forever |
 
-Backups stay on the same disk: they protect against mistakes and corruption, not disk loss. Copy `data/backups` off the host for that. To restore: stop `machia`, copy a `machia-*.db` over `data/machia.db` (and extract an `uploads-*.tar.gz` into `data/uploads`), `chown -R machia: /opt/machia/data`, start `machia`. The two are taken seconds apart, so a bot changed in between can disagree with its approval; such a bot's contest games fail with "changed since they were approved" (visible to admins) rather than running unreviewed code — restore the matching uploads or re-review it.
+Backups stay on the same disk: they protect against mistakes and corruption, not disk loss. Copy `data/backups` off the host for that. To restore: stop `machia`, copy a `machia-*.db` over `data/machia.db` (and extract an `uploads-*.tar.gz` into `data/uploads`), `chown -R machia: /opt/machia/data`, start `machia`. The two are taken seconds apart, so a bot changed in between can disagree with its approval; such a bot's contest games fail with "changed since they were approved" (visible to admins) rather than running unreviewed code. Restore the matching uploads, or open the bot's code on the contest page and **重新批准此版本** (re-approve; allowed even after the contest started), then **重跑失败对局**.
 
 ## Notes
 

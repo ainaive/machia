@@ -235,7 +235,14 @@ export function ContestDetailPage() {
           <div>
             <h3 className="mb-3 font-display text-xl font-bold">参赛者</h3>
             <ul className="space-y-2">
-              {entries.map((e) => (
+              {entries.map((e) => {
+                const isAdmin = user?.role === "admin";
+                // Before the start: full review. After it, only re-pinning an
+                // approved bot, to recover games that failed on changed files.
+                const canReview = isAdmin && contest.status === "open" && e.status !== "approved";
+                const canRepin =
+                  isAdmin && contest.status !== "open" && e.status === "approved" && failedCount > 0;
+                return (
                 <li
                   key={e.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-ink/10 bg-paper/60 px-3 py-2 text-sm"
@@ -245,9 +252,7 @@ export function ContestDetailPage() {
                     {e.botName ? ` · ${e.botName}` : ""}
                     <span className="ml-2 text-ink/45">{STATUS_LABEL[e.status]}</span>
                   </span>
-                  {user?.role === "admin" &&
-                    contest.status === "open" &&
-                    e.status !== "approved" && (
+                  {(canReview || canRepin) && (
                       <span className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
@@ -273,44 +278,47 @@ export function ContestDetailPage() {
                           }
                           className="rounded-md bg-moss px-2 py-1 text-xs text-paper disabled:opacity-40"
                         >
-                          通过
+                          {canRepin ? "重新批准此版本" : "通过"}
                         </button>
-                        <input
-                          value={rejectWhy[e.id] ?? ""}
-                          onChange={(ev) =>
-                            setRejectWhy((prev) => ({
-                              ...prev,
-                              [e.id]: ev.target.value,
-                            }))
-                          }
-                          placeholder="拒绝原因"
-                          className="w-32 rounded-md border border-ink/15 px-2 py-1 text-xs"
-                        />
-                        <button
-                          type="button"
-                          disabled={busy !== null}
-                          onClick={() =>
-                            void wrap("reject", () =>
-                              rejectEntry(
-                                contest.id,
-                                e.id,
-                                rejectWhy[e.id] ?? "",
-                              ),
-                            )
-                          }
-                          className="rounded-md border border-clay/40 px-2 py-1 text-xs text-clay"
-                        >
-                          拒绝
-                        </button>
+                        {canReview && (
+                          <>
+                            <input
+                              value={rejectWhy[e.id] ?? ""}
+                              onChange={(ev) =>
+                                setRejectWhy((prev) => ({
+                                  ...prev,
+                                  [e.id]: ev.target.value,
+                                }))
+                              }
+                              placeholder="拒绝原因"
+                              className="w-32 rounded-md border border-ink/15 px-2 py-1 text-xs"
+                            />
+                            <button
+                              type="button"
+                              disabled={busy !== null}
+                              onClick={() =>
+                                void wrap("reject", () =>
+                                  rejectEntry(
+                                    contest.id,
+                                    e.id,
+                                    rejectWhy[e.id] ?? "",
+                                  ),
+                                )
+                              }
+                              className="rounded-md border border-clay/40 px-2 py-1 text-xs text-clay"
+                            >
+                              拒绝
+                            </button>
+                          </>
+                        )}
                       </span>
                     )}
-                  {user?.role === "admin" &&
-                    contest.status === "open" &&
-                    e.status !== "approved" &&
-                    reviewed[e.id] && (
+                  {(canReview || canRepin) && reviewed[e.id] && (
                       <div className="basis-full space-y-2 pt-1">
                         <p className="text-xs text-ink/50">
-                          通过即批准下面这一版代码；参赛者若之后重新上传，需要重新查看。
+                          {canRepin
+                            ? "服务器上的代码与批准时不一致时，该 Bot 的对局会失败。确认下面这一版后重新批准，再点「重跑失败对局」。"
+                            : "通过即批准下面这一版代码；参赛者若之后重新上传，需要重新查看。"}
                         </p>
                         {reviewed[e.id]!.files.map((f) => (
                           <div key={f.name}>
@@ -323,7 +331,8 @@ export function ContestDetailPage() {
                       </div>
                     )}
                 </li>
-              ))}
+                );
+              })}
               {entries.length === 0 && (
                 <li className="text-sm text-ink/50">还没有人报名。</li>
               )}

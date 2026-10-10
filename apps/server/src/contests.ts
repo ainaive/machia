@@ -341,12 +341,16 @@ export async function getEntryFiles(contestId: string, entryId: string, viewer: 
 
 export async function reviewEntry(contestId: string, entryId: string, decision: ReviewDecision) {
   const contest = await contestById(contestId);
-  if (contest.status !== "open") {
-    throw new HttpError(409, "Can only review entries while the contest is open");
-  }
   const db = await getDb();
   return withEntryLock(entryId, async () => {
     const entry = await contestEntry(contestId, entryId);
+    // Once a contest starts its field is fixed. The one exception is
+    // re-approving an approved bot, which re-pins the files an admin just
+    // reviewed, e.g. after a restore left them differing from the pin.
+    const reapproval = decision.action === "approve" && entry.status === "approved";
+    if (contest.status !== "open" && !reapproval) {
+      throw new HttpError(409, "Can only review entries while the contest is open");
+    }
     if (decision.action === "approve") {
       if (!entry.bot_name) {
         throw new HttpError(400, "Cannot approve an entry without a bot");
@@ -461,7 +465,7 @@ async function loadEntryPlayer(entryId: string): Promise<MatchPlayerSpec> {
   const current = await readBotFiles(dir).catch(() => null);
   if (!row.approved_hash || current?.hash !== row.approved_hash) {
     throw new Error(
-      `${row.bot_name}: bot files changed since they were approved; restore the reviewed version or review it again`,
+      `${row.bot_name}: bot files changed since they were approved; restore the reviewed version, or review and re-approve it, then rerun`,
     );
   }
   const manifestFile = current.files.find((f) => f.name === "manifest.json");
