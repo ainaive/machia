@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { packBot } from "@machia/runner";
 import { app } from "./index";
+import * as botFiles from "./botFiles";
 import { parseBotFiles } from "./botFiles";
 import { resetDatabase, closeDatabase } from "./db";
 import { startContest, waitForContestWorkerIdle } from "./contests";
@@ -251,6 +252,16 @@ describe("bot file validation", () => {
         "arena",
       ).files["helper.js"],
     ).toBeDefined();
+  });
+
+  test("the approval hash tells file boundaries apart", () => {
+    // NUL-joined fields made these two different uploads hash the same.
+    const oneFile = [{ name: "bot.js", content: "A\0helper.js\0B" }];
+    const twoFiles = [
+      { name: "bot.js", content: "A" },
+      { name: "helper.js", content: "B" },
+    ];
+    expect(botFiles.hashBotFiles(oneFile)).not.toBe(botFiles.hashBotFiles(twoFiles));
   });
 
   test("accepts a sample bot once it is packed", async () => {

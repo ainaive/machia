@@ -150,11 +150,10 @@ export interface BotFile {
 
 /** Content hash of a bot: every file's name and content, in name order. */
 export function hashBotFiles(files: BotFile[]): string {
-  const hash = createHash("sha256");
-  for (const file of [...files].sort((a, b) => (a.name < b.name ? -1 : 1))) {
-    hash.update(file.name).update("\0").update(file.content).update("\0");
-  }
-  return hash.digest("hex");
+  const sorted = [...files].sort((a, b) => (a.name < b.name ? -1 : 1));
+  // JSON keeps field boundaries unambiguous even if contents contain NUL.
+  const encoded = JSON.stringify(sorted.map((f) => [f.name, f.content]));
+  return createHash("sha256").update(encoded).digest("hex");
 }
 
 /** The files stored for an uploaded bot, in name order, with their hash. */
