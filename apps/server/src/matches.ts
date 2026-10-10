@@ -11,7 +11,9 @@ import {
 
 const ROOT = path.resolve(import.meta.dir, "../../..");
 export const BOTS_DIR = path.join(ROOT, "bots");
-export const REPLAYS_DIR = path.join(ROOT, "data/replays");
+export function replaysDir(): string {
+  return process.env.MACHIA_REPLAYS_DIR ?? path.join(ROOT, "data/replays");
+}
 
 export interface BotInfo {
   id: string;
@@ -104,9 +106,9 @@ export async function runPlayersMatch(
     maxTicks: options?.maxTicks,
     seed: options?.seed,
   });
-  await mkdir(REPLAYS_DIR, { recursive: true });
+  await mkdir(replaysDir(), { recursive: true });
   await writeFile(
-    path.join(REPLAYS_DIR, `${id}.json`),
+    path.join(replaysDir(), `${id}.json`),
     JSON.stringify(replay),
     "utf8",
   );
@@ -172,7 +174,7 @@ const REPLAY_ID_RE = /^[A-Za-z0-9_-]+$/;
 export async function readReplay(id: string): Promise<MatchReplay | null> {
   if (!REPLAY_ID_RE.test(id)) return null;
   try {
-    const raw = await readFile(path.join(REPLAYS_DIR, `${id}.json`), "utf8");
+    const raw = await readFile(path.join(replaysDir(), `${id}.json`), "utf8");
     return JSON.parse(raw) as MatchReplay;
   } catch {
     return null;
@@ -187,8 +189,8 @@ export async function listReplays(): Promise<
     players: MatchReplay["players"];
   }>
 > {
-  await mkdir(REPLAYS_DIR, { recursive: true });
-  const files = await readdir(REPLAYS_DIR);
+  await mkdir(replaysDir(), { recursive: true });
+  const files = await readdir(replaysDir());
   const out = [];
   for (const file of files) {
     if (!file.endsWith(".json")) continue;

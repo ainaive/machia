@@ -38,6 +38,7 @@ bun run dev
 | `MACHIA_ADMIN_EMAIL` / `_USERNAME` / `_PASSWORD` | — | 启动时种子管理员 |
 | `MACHIA_DB` | `data/machia.db` | SQLite 路径 |
 | `MACHIA_UPLOADS_DIR` | `data/uploads` | 参赛 Bot 存放目录 |
+| `MACHIA_REPLAYS_DIR` | `data/replays` | 对局回放目录（`bun test` 会自动指向临时目录） |
 | `MACHIA_CONTEST_MAX_TICKS` | 各游戏默认 | 赛事对局最大回合数 |
 | `MACHIA_AUTH_RATE_LIMIT` | 开启 | 设为 `0` 关闭登录/注册限流（仅测试用） |
 | `MACHIA_SMTP_HOST` / `_PORT` / `_USER` / `_PASS` / `_FROM` | — / `587` | 重置密码邮件；未配置时链接写入日志 |

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import path from "node:path";
-import { DEMO_BOTS, REPLAYS_DIR, listBots, loadBot, runPlayersMatch, startMatch } from "./matches";
+import { DEMO_BOTS, listBots, loadBot, replaysDir, runPlayersMatch, startMatch } from "./matches";
 
 describe("matches helpers", () => {
   test("listBots finds sample bots", async () => {
@@ -50,7 +50,7 @@ describe("match concurrency", () => {
     expect(practice.ticks.length).toBeGreaterThan(0);
     expect(contest.ticks.length).toBeGreaterThan(0);
     for (const id of [practice.id, contest.id]) {
-      await rm(path.join(REPLAYS_DIR, `${id}.json`), { force: true });
+      await rm(path.join(replaysDir(), `${id}.json`), { force: true });
     }
   }, 30_000);
 });
