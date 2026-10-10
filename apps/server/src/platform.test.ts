@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,7 +7,14 @@ import { app } from "./index";
 import * as botFiles from "./botFiles";
 import { parseBotFiles } from "./botFiles";
 import { resetDatabase, closeDatabase } from "./db";
-import { startContest, waitForContestWorkerIdle } from "./contests";
+import {
+  getEntryFiles,
+  reviewEntry,
+  startContest,
+  submitBot,
+  waitForContestWorkerIdle,
+} from "./contests";
+import type { PublicUser } from "./auth";
 import { HttpError } from "./errors";
 import { setMailSink } from "./mail";
 
@@ -609,6 +616,46 @@ describe("auth and contests", () => {
     expect(approved.status).toBe(200);
     expect((approved.body.entry as { status: string }).status).toBe("approved");
   });
+
+  test("an upload racing an approval never leaves unreviewed code approved", async () => {
+    const admin = await adminSession();
+    const bob = await register("bob");
+    const bobUser = bob.body.user as PublicUser;
+    const adminUser = { id: "", username: "admin", role: "admin" } as PublicUser;
+    const created = await json("/api/contests", {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ title: "Race Cup", gameId: "arena" }),
+    });
+    const contestId = (created.body.contest as { id: string }).id;
+    const reviewed = { ...arenaFiles("BobBot"), "bot.js": `${WAIT_BOT}// reviewed\n` };
+    const swapped = { ...arenaFiles("BobBot"), "bot.js": `${WAIT_BOT}// swapped\n` };
+    const entry = await submitBot(contestId, bobUser, reviewed);
+    const { hash } = await getEntryFiles(contestId, entry.id, adminUser);
+
+    // Make the approval's file read slow, so the upload lands mid-approval.
+    const realRead = botFiles.readBotFiles;
+    const slowRead = spyOn(botFiles, "readBotFiles").mockImplementation(async (dir) => {
+      const files = await realRead(dir);
+      await Bun.sleep(150);
+      return files;
+    });
+    try {
+      // Call the services directly: over HTTP the auth step staggers them.
+      const approving = reviewEntry(contestId, entry.id, { action: "approve", hash });
+      await Bun.sleep(20);
+      await Promise.allSettled([approving, submitBot(contestId, bobUser, swapped)]);
+    } finally {
+      slowRead.mockRestore();
+    }
+
+    const detail = await json(`/api/contests/${contestId}`, { cookie: admin.cookie });
+    const status = (detail.body.entries as Array<{ id: string; status: string }>).find(
+      (e) => e.id === entry.id,
+    )!.status;
+    const now = await getEntryFiles(contestId, entry.id, adminUser);
+    expect(status === "approved" && now.hash !== hash).toBe(false);
+  }, 30_000);
 
   test("each contest finishes as soon as its own games are done", async () => {
     const admin = await adminSession();
