@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DEMO_BOTS, listBots, loadBot } from "./matches";
+import { rm } from "node:fs/promises";
+import path from "node:path";
+import { DEMO_BOTS, REPLAYS_DIR, listBots, loadBot, runPlayersMatch, startMatch } from "./matches";
 
 describe("matches helpers", () => {
   test("listBots finds sample bots", async () => {
@@ -31,4 +33,24 @@ describe("matches helpers", () => {
       }
     }
   });
+});
+
+describe("match concurrency", () => {
+  test("a practice match does not block a contest match", async () => {
+    const bot = await loadBot("random-walker", "arena");
+    const spec = {
+      botId: bot.id,
+      botDir: bot.dir,
+      manifest: { name: bot.name, runtime: "node" as const, entry: bot.entry },
+    };
+    const [practice, contest] = await Promise.all([
+      startMatch("arena", ["random-walker", "turtle"]),
+      runPlayersMatch("arena", [spec, spec], { maxTicks: 5 }),
+    ]);
+    expect(practice.ticks.length).toBeGreaterThan(0);
+    expect(contest.ticks.length).toBeGreaterThan(0);
+    for (const id of [practice.id, contest.id]) {
+      await rm(path.join(REPLAYS_DIR, `${id}.json`), { force: true });
+    }
+  }, 30_000);
 });

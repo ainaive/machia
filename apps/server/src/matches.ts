@@ -96,23 +96,21 @@ export async function runPlayersMatch(
       `Select ${plugin.minPlayers} to ${plugin.maxPlayers} bots for ${plugin.name}`,
     );
   }
-  return withMatchLock(async () => {
-    const id = newMatchId();
-    const replay = await runMatch({
-      id,
-      gameId,
-      players,
-      maxTicks: options?.maxTicks,
-      seed: options?.seed,
-    });
-    await mkdir(REPLAYS_DIR, { recursive: true });
-    await writeFile(
-      path.join(REPLAYS_DIR, `${id}.json`),
-      JSON.stringify(replay),
-      "utf8",
-    );
-    return replay;
+  const id = newMatchId();
+  const replay = await runMatch({
+    id,
+    gameId,
+    players,
+    maxTicks: options?.maxTicks,
+    seed: options?.seed,
   });
+  await mkdir(REPLAYS_DIR, { recursive: true });
+  await writeFile(
+    path.join(REPLAYS_DIR, `${id}.json`),
+    JSON.stringify(replay),
+    "utf8",
+  );
+  return replay;
 }
 
 export async function startMatch(
@@ -133,7 +131,9 @@ export async function startMatch(
       },
     });
   }
-  return runPlayersMatch(gameId, players);
+  // Practice matches need no login, so they run one at a time. Contest
+  // matches call runPlayersMatch directly and never wait on this lock.
+  return withMatchLock(() => runPlayersMatch(gameId, players));
 }
 
 export const DEMO_BOTS: Record<string, string[]> = {

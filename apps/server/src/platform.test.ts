@@ -126,8 +126,8 @@ async function register(
 }
 
 /** An arena contest with two approved WAIT bots, ready to start. */
-async function readyContest(adminCookie: string) {
-  const bob = await register("bob");
+async function readyContest(adminCookie: string, rival = "bob") {
+  const bob = await register(rival);
   const created = await json("/api/contests", {
     method: "POST",
     cookie: adminCookie,
@@ -492,6 +492,31 @@ describe("auth and contests", () => {
       expect(row).toMatchObject({ rank: 1, wins: 0, draws: 2 });
     }
   }, 25_000);
+
+  test("each contest finishes as soon as its own games are done", async () => {
+    const admin = await adminSession();
+    const first = await readyContest(admin.cookie, "bob");
+    const second = await readyContest(admin.cookie, "carol");
+    await startContest(first);
+    await startContest(second);
+    const status = async (id: string) =>
+      ((await json(`/api/contests/${id}`, { cookie: admin.cookie })).body.contest as {
+        status: string;
+      }).status;
+    // The first contest's games run first; it must not wait for the second.
+    let firstDoneWhileSecondRuns = false;
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      const [a, b] = [await status(first), await status(second)];
+      if (a === "finished" && b === "running") {
+        firstDoneWhileSecondRuns = true;
+        break;
+      }
+      if (b === "finished") break;
+      await Bun.sleep(5);
+    }
+    expect(firstDoneWhileSecondRuns).toBe(true);
+  }, 30_000);
 
   test("concurrent starts create the fixtures once", async () => {
     const admin = await adminSession();

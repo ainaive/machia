@@ -7,7 +7,3 @@ export class HttpError extends Error {
     this.name = "HttpError";
   }
 }
-
-export function isBusyError(err: unknown): boolean {
-  return err instanceof Error && err.message.includes("already running");
-}

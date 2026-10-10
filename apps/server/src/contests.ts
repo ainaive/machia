@@ -1,9 +1,10 @@
 import path from "node:path";
+import type { Database } from "bun:sqlite";
 import { getGame, randomSeed, type MatchPlayerSpec } from "@machia/runner";
 import type { PublicUser } from "./auth";
 import { botDirForEntry, parseBotFiles, writeBotFiles } from "./botFiles";
 import { defaultUploadsDir, getDb } from "./db";
-import { HttpError, isBusyError } from "./errors";
+import { HttpError } from "./errors";
 import { newId } from "./ids";
 import { runPlayersMatch } from "./matches";
 import {
@@ -400,28 +401,28 @@ async function loadEntryPlayer(entryId: string): Promise<MatchPlayerSpec> {
   };
 }
 
+/** Marks a running contest finished once none of its matches are left to play. */
+function finishContestIfDone(db: Database, contestId: string): void {
+  const left = db
+    .query(
+      `SELECT id FROM contest_matches
+       WHERE contest_id = ? AND status IN ('pending', 'running')
+       LIMIT 1`,
+    )
+    .get(contestId);
+  if (left) return;
+  db.run(
+    `UPDATE contests SET status = 'finished', finished_at = ? WHERE id = ? AND status = 'running'`,
+    [new Date().toISOString(), contestId],
+  );
+}
+
 async function finishReadyContests(): Promise<void> {
   const db = await getDb();
   const running = db
-    .query<{ id: string }, []>(
-      `SELECT id FROM contests WHERE status = 'running'`,
-    )
+    .query<{ id: string }, []>(`SELECT id FROM contests WHERE status = 'running'`)
     .all();
-  const now = new Date().toISOString();
-  for (const contest of running) {
-    const pending = db
-      .query(
-        `SELECT id FROM contest_matches
-         WHERE contest_id = ? AND status IN ('pending', 'running')
-         LIMIT 1`,
-      )
-      .get(contest.id);
-    if (pending) continue;
-    db.run(`UPDATE contests SET status = 'finished', finished_at = ? WHERE id = ?`, [
-      now,
-      contest.id,
-    ]);
-  }
+  for (const contest of running) finishContestIfDone(db, contest.id);
 }
 
 async function processNextContestMatch(): Promise<boolean> {
@@ -437,28 +438,18 @@ async function processNextContestMatch(): Promise<boolean> {
   }
 
   db.run(`UPDATE contest_matches SET status = 'running' WHERE id = ?`, [next.id]);
-  const contest = await contestById(next.contest_id);
+  // Everything after claiming the match is inside the try, so a failure
+  // records an error instead of leaving the match stuck in 'running'.
   try {
+    const contest = await contestById(next.contest_id);
     const players = [
       await loadEntryPlayer(next.entry_a_id),
       await loadEntryPlayer(next.entry_b_id),
     ];
-    let replay;
-    for (;;) {
-      try {
-        replay = await runPlayersMatch(contest.game_id, players, {
-          maxTicks: contestMaxTicks(),
-          seed: next.seed ?? undefined,
-        });
-        break;
-      } catch (err) {
-        if (isBusyError(err)) {
-          await Bun.sleep(200);
-          continue;
-        }
-        throw err;
-      }
-    }
+    const replay = await runPlayersMatch(contest.game_id, players, {
+      maxTicks: contestMaxTicks(),
+      seed: next.seed ?? undefined,
+    });
     const resultA = replay.results.find((r) => r.playerId === 0);
     const resultB = replay.results.find((r) => r.playerId === 1);
     if (!resultA || !resultB) throw new Error("Match missing results");
@@ -490,6 +481,8 @@ async function processNextContestMatch(): Promise<boolean> {
       [message, next.id],
     );
   }
+  // Finish this contest now, not when the whole queue drains.
+  finishContestIfDone(db, next.contest_id);
   return true;
 }
 
