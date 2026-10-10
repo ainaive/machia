@@ -3,10 +3,6 @@
 
 /** Shared brain for Tanks sample bots. */
 
-function key(p) {
-  return `${p.x},${p.y}`;
-}
-
 function manhattan(a, b) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }

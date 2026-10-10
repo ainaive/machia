@@ -23,7 +23,6 @@ describe("bomber basics", () => {
 
   test("place bomb explodes after fuse ticks", () => {
     const size = 11;
-    const spawns = spawnSlots(size).slice(0, 2);
     const tiles = openArena(size);
     for (let y = 1; y < size - 1; y++) {
       for (let x = 1; x < size - 1; x++) {
