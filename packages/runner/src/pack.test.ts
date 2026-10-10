@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { runMatch } from "./index";
@@ -42,4 +42,16 @@ describe("pack", () => {
     expect(await main([], (l) => errors.push(l))).toBe(1);
     expect(errors.join("\n")).toMatch(/Usage: bun run pack/);
   }, 30_000);
+
+  test("rejects a manifest whose games is not an array of strings", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "machia-bot-"));
+    writeFileSync(path.join(dir, "bot.js"), "process.stdin.resume();\n");
+    writeFileSync(
+      path.join(dir, "manifest.json"),
+      JSON.stringify({ name: "X", runtime: "node", entry: "bot.js", games: "bomber" }),
+    );
+    await expect(packBot(dir, mkdtempSync(path.join(tmpdir(), "machia-pack-")))).rejects.toThrow(
+      /games must be an array of strings/,
+    );
+  });
 });

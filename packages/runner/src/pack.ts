@@ -36,6 +36,10 @@ export async function packBot(botDir: string, outDir: string): Promise<PackedBot
   if (typeof raw.name !== "string" || !raw.name.trim()) throw new Error("manifest.json needs a name");
   if (raw.runtime !== "node") throw new Error('manifest.json runtime must be "node"');
   if (typeof raw.entry !== "string") throw new Error("manifest.json needs an entry");
+  const games: unknown = raw.games;
+  if (games !== undefined && (!Array.isArray(games) || !games.every((g) => typeof g === "string"))) {
+    throw new Error("manifest.json games must be an array of strings");
+  }
 
   const build = await Bun.build({
     entrypoints: [path.resolve(botDir, raw.entry)],
@@ -50,7 +54,7 @@ export async function packBot(botDir: string, outDir: string): Promise<PackedBot
     name: raw.name.trim(),
     runtime: "node",
     entry: "bot.js",
-    games: raw.games && raw.games.length > 0 ? raw.games : ["arena"],
+    games: games && games.length > 0 ? games : ["arena"],
   };
   const manifestText = JSON.stringify(manifest, null, 2);
   const bytes = Buffer.byteLength(code) + Buffer.byteLength(manifestText);
