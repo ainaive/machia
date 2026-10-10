@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { backupDatabase, backupUploads, pruneBackups, pruneReplays } from "./maintenance";
@@ -36,6 +36,22 @@ describe("maintenance", () => {
     const listing = spawnSync("tar", ["-tzf", file], { encoding: "utf8" }).stdout;
     expect(listing).toContain("u1/e1/bot.js");
     expect(backupUploads(path.join(dir, "missing"), path.join(dir, "backups"), NOW)).toBeNull();
+  });
+
+  // Root can read anything, so the unreadable-file failure can't be staged.
+  test.skipIf(process.getuid?.() === 0)("a failed archive leaves nothing that looks like a backup", () => {
+    const dir = temp();
+    const bot = path.join(dir, "uploads", "u1", "e1");
+    mkdirSync(bot, { recursive: true });
+    writeFileSync(path.join(bot, "bot.js"), "// bot");
+    chmodSync(path.join(bot, "bot.js"), 0o000);
+    try {
+      expect(() => backupUploads(path.join(dir, "uploads"), path.join(dir, "backups"), NOW)).toThrow(/tar failed/);
+      // A partial archive here would count toward retention and push out a good one.
+      expect(readdirSync(path.join(dir, "backups"))).toEqual([]);
+    } finally {
+      chmodSync(path.join(bot, "bot.js"), 0o644);
+    }
   });
 
   test("keeps the newest backups of each kind", () => {

@@ -9,7 +9,7 @@
  */
 import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { defaultDbPath, defaultUploadsDir } from "./db";
 import { replaysDir } from "./matches";
@@ -18,27 +18,44 @@ function stamp(now: Date): string {
   return now.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
 }
 
+/**
+ * Writes a backup under a hidden temporary name and publishes it only once
+ * complete: a failed run must never leave a file that retention would count
+ * as a backup (and keep in place of a good, older one).
+ */
+function publish(file: string, write: (partial: string) => void): string {
+  const partial = path.join(path.dirname(file), `.${path.basename(file)}.partial`);
+  try {
+    write(partial);
+    renameSync(partial, file);
+    return file;
+  } catch (err) {
+    rmSync(partial, { force: true });
+    throw err;
+  }
+}
+
 /** Snapshot of the database via VACUUM INTO, read-only on the live file. */
 export function backupDatabase(dbPath: string, backupDir: string, now = new Date()): string {
   mkdirSync(backupDir, { recursive: true });
-  const file = path.join(backupDir, `machia-${stamp(now)}.db`);
-  const db = new Database(dbPath, { readonly: true });
-  try {
-    db.run("VACUUM INTO ?", [file]);
-  } finally {
-    db.close();
-  }
-  return file;
+  return publish(path.join(backupDir, `machia-${stamp(now)}.db`), (partial) => {
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      db.run("VACUUM INTO ?", [partial]);
+    } finally {
+      db.close();
+    }
+  });
 }
 
 /** tar.gz of every uploaded bot, or null if nothing was ever uploaded. */
 export function backupUploads(uploadsDir: string, backupDir: string, now = new Date()): string | null {
   if (!existsSync(uploadsDir)) return null;
   mkdirSync(backupDir, { recursive: true });
-  const file = path.join(backupDir, `uploads-${stamp(now)}.tar.gz`);
-  const tar = spawnSync("tar", ["-czf", file, "-C", uploadsDir, "."], { encoding: "utf8" });
-  if (tar.status !== 0) throw new Error(`tar failed: ${tar.stderr || tar.error?.message}`);
-  return file;
+  return publish(path.join(backupDir, `uploads-${stamp(now)}.tar.gz`), (partial) => {
+    const tar = spawnSync("tar", ["-czf", partial, "-C", uploadsDir, "."], { encoding: "utf8" });
+    if (tar.status !== 0) throw new Error(`tar failed: ${tar.stderr || tar.error?.message}`);
+  });
 }
 
 const BACKUP_RE = /^(machia|uploads)-\d{8}-\d{6}\.(db|tar\.gz)$/;
