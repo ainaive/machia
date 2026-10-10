@@ -10,7 +10,6 @@ import {
   fetchMe,
   type PublicUser,
 } from "./api";
-import { signOut } from "./auth-client";
 
 interface AuthState {
   user: PublicUser | null;
@@ -37,6 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const logout = useCallback(async () => {
+    // Loaded on demand: the auth client is large and most visitors never sign in.
+    const { signOut } = await import("./auth-client");
     await signOut();
     setUser(null);
   }, []);
