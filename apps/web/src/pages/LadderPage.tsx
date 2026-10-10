@@ -48,16 +48,69 @@ export function LadderTable({ players }: { players: LadderPlayer[] }) {
   );
 }
 
+const errorClass = "rounded-md border border-clay/40 bg-[#f7e4d8] px-3 py-2 text-sm text-clay";
+
+/**
+ * Game tabs and the selected game's standings. The two load separately, so a
+ * failed game list leaves the standings (and a failed ladder the tabs) alone.
+ */
+export function LadderView({
+  gameId,
+  games,
+  gamesError,
+  players,
+  error,
+}: {
+  gameId?: string;
+  games?: GameInfo[];
+  gamesError: string | null;
+  players?: LadderPlayer[];
+  error: string | null;
+}) {
+  return (
+    <>
+      {gamesError ? (
+        <div className={`mb-5 ${errorClass}`}>无法加载游戏列表：{gamesError}</div>
+      ) : (
+        <div className="mb-5 flex flex-wrap gap-2">
+          {games?.map((g) => (
+            <Link
+              key={g.id}
+              to={`/ladder/${g.id}`}
+              className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+                g.id === gameId ? "bg-moss text-paper" : "bg-paper/70 text-ink/70 hover:bg-moss/10"
+              }`}
+            >
+              {g.name}
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {error ? (
+        <div className={errorClass}>{error}</div>
+      ) : players ? (
+        <LadderTable players={players} />
+      ) : gameId || !gamesError ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="animate-spin text-moss" size={24} />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export function LadderPage() {
   const { gameId } = useParams();
   const [games, setGames] = useState<GameInfo[]>();
+  const [gamesError, setGamesError] = useState<string | null>(null);
   const [players, setPlayers] = useState<LadderPlayer[]>();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchGames()
       .then((r) => setGames(r.games))
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setGamesError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   useEffect(() => {
@@ -82,31 +135,7 @@ export function LadderPage() {
         天梯
       </h2>
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        {games?.map((g) => (
-          <Link
-            key={g.id}
-            to={`/ladder/${g.id}`}
-            className={`rounded-full px-3 py-1 text-sm font-medium transition ${
-              g.id === gameId ? "bg-moss text-paper" : "bg-paper/70 text-ink/70 hover:bg-moss/10"
-            }`}
-          >
-            {g.name}
-          </Link>
-        ))}
-      </div>
-
-      {error ? (
-        <div className="rounded-md border border-clay/40 bg-[#f7e4d8] px-3 py-2 text-sm text-clay">
-          {error}
-        </div>
-      ) : players === undefined ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="animate-spin text-moss" size={24} />
-        </div>
-      ) : (
-        <LadderTable players={players} />
-      )}
+      <LadderView gameId={gameId} games={games} gamesError={gamesError} players={players} error={error} />
 
       <p className="mt-6 max-w-2xl text-xs leading-relaxed text-ink/50">
         初始 1500 分，K = 32。每场比赛结束时结算一次：每局按赛前积分算期望得分（胜 1、平 0.5、负 0），

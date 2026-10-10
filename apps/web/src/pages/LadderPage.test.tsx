@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { LadderPlayer } from "../api";
-import { LadderTable } from "./LadderPage";
+import { MemoryRouter } from "react-router-dom";
+import type { GameInfo, LadderPlayer } from "../api";
+import { LadderTable, LadderView } from "./LadderPage";
 
 const player = (username: string, rank: number, rating: number): LadderPlayer => ({
   rank,
@@ -30,5 +31,40 @@ describe("LadderTable", () => {
 
   test("explains an empty ladder", () => {
     expect(renderToStaticMarkup(<LadderTable players={[]} />)).toContain("还没有已结束的比赛");
+  });
+});
+
+describe("LadderView", () => {
+  const arena: GameInfo = { id: "arena", name: "Arena", description: "", minPlayers: 2, maxPlayers: 4 };
+  const view = (props: Parameters<typeof LadderView>[0]) =>
+    renderToStaticMarkup(
+      <MemoryRouter>
+        <LadderView {...props} />
+      </MemoryRouter>,
+    );
+
+  test("a failed game list doesn't hide the standings", () => {
+    const html = view({
+      gameId: "arena",
+      gamesError: "请求失败（502 Bad Gateway）",
+      players: [player("alice", 1, 1516)],
+      error: null,
+    });
+    expect(html).toContain("无法加载游戏列表：请求失败（502 Bad Gateway）");
+    expect(html).toContain("alice");
+    expect(html).not.toContain("animate-spin");
+  });
+
+  test("a failed ladder keeps the game tabs", () => {
+    const html = view({ gameId: "arena", games: [arena], gamesError: null, error: "Unknown game" });
+    expect(html).toContain('href="/ladder/arena"');
+    expect(html).toContain("Unknown game");
+    expect(html).not.toContain("<table");
+  });
+
+  test("with no game chosen, a failed game list shows its error instead of loading forever", () => {
+    const html = view({ gamesError: "请求失败（502 Bad Gateway）", error: null });
+    expect(html).toContain("无法加载游戏列表");
+    expect(html).not.toContain("animate-spin");
   });
 });
