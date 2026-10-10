@@ -137,7 +137,7 @@ export class BwrapSandbox {
       // memory.swap.max only exists with swap accounting.
       if (file !== "memory.swap.max" || existsSync(target)) writeFileSync(target, value);
     };
-    set("memory.max", String(this.limits.memoryMb * 1024 * 1024));
+    set("memory.max", String(Math.floor(this.limits.memoryMb * 1024 * 1024)));
     set("memory.swap.max", "0");
     set("pids.max", String(this.limits.pids));
     set("cpu.max", `${Math.round(this.limits.cpus * 100_000)} 100000`);
@@ -148,15 +148,25 @@ export class BwrapSandbox {
     };
   }
 
-  /** Throws unless a command runs in the sandbox: catches a missing bwrap or AppArmor profile at boot. */
-  selfTest(nodePath = "node"): void {
-    const { command, args } = new BwrapSandbox({
-      bwrapPath: this.bwrapPath,
-      layout: this.layout,
-    }).wrap("/usr", [nodePath, "-e", "process.exit(0)"]);
-    const result = spawnSync(command, args, { encoding: "utf8", timeout: 10_000 });
-    if (result.status !== 0) {
-      const detail = (result.stderr || result.error?.message || `exit ${result.status}`).trim();
+  /**
+   * Rejects unless Node starts in the sandbox exactly as a bot would, with
+   * the configured cgroup and limits. Run at boot, it catches a missing
+   * bwrap or AppArmor profile, cgroups the service can't manage, limits the
+   * kernel refuses, and limits too tight for Node to start.
+   */
+  async selfTest(nodePath = "node"): Promise<void> {
+    let detail: string | null = null;
+    try {
+      const { command, args, release } = this.wrap("/usr", [nodePath, "-e", "process.exit(0)"]);
+      const result = spawnSync(command, args, { encoding: "utf8", timeout: 10_000 });
+      await release();
+      if (result.status !== 0) {
+        detail = (result.stderr || result.error?.message || `exit ${result.status}`).trim();
+      }
+    } catch (err) {
+      detail = (err as Error).message;
+    }
+    if (detail !== null) {
       throw new Error(`Bot sandbox self-test failed: ${detail} (see docs/deploy.md)`);
     }
   }

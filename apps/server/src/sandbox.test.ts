@@ -42,4 +42,17 @@ describe("sandbox configuration", () => {
       /MACHIA_BOT_MEMORY_MB/,
     );
   });
+
+  test("rejects limits the kernel would refuse at the first bot", () => {
+    // pids.max takes a whole number; cpu.max needs a quota of at least 1000µs.
+    expect(() => sandboxFromEnv({ MACHIA_SANDBOX: "bwrap", MACHIA_BOT_PIDS: "1.5" }, detect)).toThrow(
+      /MACHIA_BOT_PIDS/,
+    );
+    expect(() => sandboxFromEnv({ MACHIA_SANDBOX: "bwrap", MACHIA_BOT_CPUS: "0.001" }, detect)).toThrow(
+      /MACHIA_BOT_CPUS/,
+    );
+    expect(sandboxFromEnv({ MACHIA_SANDBOX: "bwrap", MACHIA_BOT_CPUS: "0.01" }, detect)!.limits.cpus).toBe(
+      0.01,
+    );
+  });
 });

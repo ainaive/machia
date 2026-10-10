@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { runMatch } from "./index";
@@ -56,15 +56,12 @@ describe("sandbox arguments", () => {
 });
 
 // The real thing needs Linux, bubblewrap and (on Ubuntu 24.04+) its AppArmor profile.
-const sandboxWorks = (() => {
-  if (process.platform !== "linux") return false;
-  try {
-    new BwrapSandbox().selfTest();
-    return true;
-  } catch {
-    return false;
-  }
-})();
+const sandboxWorks =
+  process.platform === "linux" &&
+  (await new BwrapSandbox().selfTest().then(
+    () => true,
+    () => false,
+  ));
 
 function probe(sandbox: BwrapSandbox) {
   return new SubprocessRunner({ sandbox, timeoutMs: 5000 }).spawn({
@@ -138,6 +135,14 @@ describe.skipIf(!sandboxWorks || !cgroupRoot)("bwrap sandbox cgroup limits (Linu
     } finally {
       await bot.destroy();
     }
+  }, 30_000);
+
+  test("the self-test applies the configured limits", async () => {
+    await expect(limited().selfTest()).resolves.toBeUndefined();
+    // Node can't even start with two tasks; better to learn that at boot.
+    const tooTight = new BwrapSandbox({ cgroupRoot, limits: { pids: 2 } });
+    tooTight.setupCgroups();
+    await expect(tooTight.selfTest()).rejects.toThrow(/self-test failed/);
   }, 30_000);
 
   test("a bot cannot start more processes than its limit", async () => {

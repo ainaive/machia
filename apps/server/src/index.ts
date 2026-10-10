@@ -388,7 +388,7 @@ if (import.meta.main) {
   const sandbox = sandboxFromEnv();
   if (sandbox) {
     sandbox.setupCgroups();
-    sandbox.selfTest();
+    await sandbox.selfTest();
     setBotRunner(new SubprocessRunner({ sandbox }));
     const { memoryMb, pids, cpus } = sandbox.limits;
     console.log(
