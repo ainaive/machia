@@ -75,6 +75,8 @@ Write **exactly one line per observation**, in order. stdout is reserved for rep
 }
 ```
 
+Players the game cannot separate (equal score and tie-breaks) share a rank, e.g. `1, 1, 3`. Seat order never breaks a tie.
+
 Do not reply. The bot is then sent `SIGTERM`; 500ms later it and any processes it started are killed with `SIGKILL`.
 
 ### Randomness

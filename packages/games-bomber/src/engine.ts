@@ -7,7 +7,7 @@ import type {
   Position,
   TickSnapshot,
 } from "@machia/game-api";
-import { createRandom } from "@machia/game-api";
+import { createRandom, outlasted, rankResults } from "@machia/game-api";
 
 export const BOMBER_ACTIONS = [
   "MOVE_UP",
@@ -503,16 +503,11 @@ export class BomberEngine implements GameInstance {
         wallsBroken: p.wallsBroken,
       };
     });
-    scored.sort((a, b) => {
+    const results = rankResults(scored, (a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      const da = a.deathTick === null ? Number.POSITIVE_INFINITY : a.deathTick;
-      const db = b.deathTick === null ? Number.POSITIVE_INFINITY : b.deathTick;
-      return db - da;
+      return outlasted(a.deathTick, b.deathTick);
     });
-    scored.forEach((r, i) => {
-      r.rank = i + 1;
-    });
-    return { ticks: this.tick, results: scored };
+    return { ticks: this.tick, results };
   }
 
   private aliveCount() {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { arenaPlugin } from "./index";
 import {
   GameEngine,
   centerCoord,
@@ -181,5 +182,19 @@ describe("scoring and end", () => {
     const results = engine.results();
     expect(results.results).toHaveLength(2);
     expect(results.results[0]!.rank).toBe(1);
+  });
+});
+
+describe("arena ranking", () => {
+  test("players with identical results share a rank", () => {
+    const game = arenaPlugin.create({ playerCount: 2, seed: 1 });
+    for (let t = 0; t < 6 && !game.finished; t++) {
+      const actions: Record<number, unknown> = {};
+      for (const id of [0, 1]) if (game.isAlive(id)) actions[id] = game.normalizeAction("WAIT");
+      game.step(actions);
+    }
+    const [first, second] = game.results().results;
+    expect(first!.score).toBe(second!.score);
+    expect([first!.rank, second!.rank]).toEqual([1, 1]);
   });
 });

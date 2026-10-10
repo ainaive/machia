@@ -7,6 +7,7 @@ import type {
   Position,
   TickSnapshot,
 } from "@machia/game-api";
+import { rankResults } from "@machia/game-api";
 
 export const SOKOBAN_ACTIONS = [
   "MOVE_UP",
@@ -301,15 +302,12 @@ export class SokobanEngine implements GameInstance {
         wallsBroken: onGoal,
       };
     });
-    scored.sort((a, b) => {
+    const results = rankResults(scored, (a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.survivalTicks - b.survivalTicks;
     });
-    scored.forEach((r, i) => {
-      r.rank = i + 1;
-    });
     void goalN;
-    return { ticks: this.tick, results: scored };
+    return { ticks: this.tick, results };
   }
 
   private walkable(pos: Position): boolean {

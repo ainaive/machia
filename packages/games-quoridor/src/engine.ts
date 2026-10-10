@@ -7,6 +7,7 @@ import type {
   Position,
   TickSnapshot,
 } from "@machia/game-api";
+import { rankResults } from "@machia/game-api";
 
 /** Demo-friendly board (classic Quoridor is 9). */
 export const BOARD_SIZE = 7;
@@ -450,11 +451,8 @@ export class QuoridorEngine implements GameInstance {
         kills: 0,
       };
     });
-    scored.sort((a, b) => b.score - a.score);
-    scored.forEach((r, i) => {
-      r.rank = i + 1;
-    });
-    return { ticks: this.tick, results: scored };
+    const results = rankResults(scored, (a, b) => b.score - a.score);
+    return { ticks: this.tick, results };
   }
 
   legalActions(playerId: number): QuoridorAction[] {
