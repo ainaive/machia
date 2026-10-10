@@ -14,6 +14,7 @@ import {
   getContestDetail,
   kickContestWorker,
   listContests,
+  rerunFailedMatches,
   reviewEntry,
   startContest,
   submitBot,
@@ -263,6 +264,17 @@ app.post("/api/contests/:id/start", async (c) => {
   try {
     await requireAdmin(c);
     const detail = await startContest(c.req.param("id"));
+    return c.json(detail);
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/contests/:id/rerun-failed", async (c) => {
+  try {
+    const admin = await requireAdmin(c);
+    const detail = await rerunFailedMatches(c.req.param("id"), admin);
     return c.json(detail);
   } catch (err) {
     const { message, status } = errorStatus(err);

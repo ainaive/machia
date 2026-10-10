@@ -226,7 +226,8 @@ export async function getContestDetail(id: string, viewer: PublicUser | null) {
       winnerEntryId: m.winner_entry_id,
       scoreA: m.score_a,
       scoreB: m.score_b,
-      error: m.error,
+      // Raw errors can expose server paths; only admins see them.
+      error: m.error === null ? null : viewer?.role === "admin" ? m.error : "Match failed",
     })),
     standings: standingsFor(entries, matches),
   };
@@ -371,6 +372,28 @@ export async function startContest(contestId: string) {
   })();
   kickContestWorker();
   return getContestDetail(contestId, null);
+}
+
+/** Queues a contest's failed games again and reopens the contest if it had finished. */
+export async function rerunFailedMatches(contestId: string, admin: PublicUser) {
+  await contestById(contestId);
+  const db = await getDb();
+  const requeued = db.transaction(() => {
+    const reset = db.run(
+      `UPDATE contest_matches SET status = 'pending', error = NULL
+       WHERE contest_id = ? AND status = 'error'`,
+      [contestId],
+    );
+    if (reset.changes > 0) {
+      db.run(`UPDATE contests SET status = 'running', finished_at = NULL WHERE id = ?`, [
+        contestId,
+      ]);
+    }
+    return reset.changes;
+  })();
+  if (requeued === 0) throw new HttpError(400, "No failed matches to rerun");
+  kickContestWorker();
+  return getContestDetail(contestId, admin);
 }
 
 async function loadEntryPlayer(entryId: string): Promise<MatchPlayerSpec> {

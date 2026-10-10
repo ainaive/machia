@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { app } from "./index";
@@ -516,6 +516,60 @@ describe("auth and contests", () => {
       await Bun.sleep(5);
     }
     expect(firstDoneWhileSecondRuns).toBe(true);
+  }, 30_000);
+
+  test("admin reruns failed games; only admins see raw errors", async () => {
+    const admin = await adminSession();
+    const contestId = await readyContest(admin.cookie, "bob");
+    const bob = await signIn("bob", "password1");
+    const entries = (await json(`/api/contests/${contestId}`, { cookie: admin.cookie })).body
+      .entries as Array<{ id: string; userId: string; username: string }>;
+    const bobEntry = entries.find((e) => e.username === "bob")!;
+    const manifestPath = path.join(
+      process.env.MACHIA_UPLOADS_DIR!,
+      bobEntry.userId,
+      bobEntry.id,
+      "manifest.json",
+    );
+    rmSync(manifestPath);
+
+    await startContest(contestId);
+    const failed = await waitForContest(contestId, admin.cookie);
+    const adminMatches = failed.matches as Array<{ status: string; error: string | null }>;
+    expect(adminMatches.map((m) => m.status)).toEqual(["error", "error"]);
+    expect(adminMatches[0]!.error).toContain("manifest.json");
+
+    const bobView = (await json(`/api/contests/${contestId}`, { cookie: bob.cookie })).body
+      .matches as Array<{ error: string | null }>;
+    expect(bobView.map((m) => m.error)).toEqual(["Match failed", "Match failed"]);
+
+    const denied = await json(`/api/contests/${contestId}/rerun-failed`, {
+      method: "POST",
+      cookie: bob.cookie,
+    });
+    expect(denied.status).toBe(403);
+
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ name: "BobBot", runtime: "node", entry: "bot.js", games: ["arena"] }),
+    );
+    const rerun = await json(`/api/contests/${contestId}/rerun-failed`, {
+      method: "POST",
+      cookie: admin.cookie,
+    });
+    expect(rerun.status).toBe(200);
+    expect((rerun.body.contest as { status: string }).status).toBe("running");
+
+    const done = await waitForContest(contestId, admin.cookie);
+    const matches = done.matches as Array<{ status: string; error: string | null }>;
+    expect(matches.map((m) => m.status)).toEqual(["done", "done"]);
+    expect(matches.every((m) => m.error === null)).toBe(true);
+
+    const nothing = await json(`/api/contests/${contestId}/rerun-failed`, {
+      method: "POST",
+      cookie: admin.cookie,
+    });
+    expect(nothing.status).toBe(400);
   }, 30_000);
 
   test("concurrent starts create the fixtures once", async () => {
