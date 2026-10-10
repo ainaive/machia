@@ -1,0 +1,11 @@
+# Machia bot sandbox: let bubblewrap create user namespaces, which Ubuntu
+# 24.04+ restricts for unprivileged programs by default.
+# Install: cp deploy/apparmor-bwrap /etc/apparmor.d/bwrap && apparmor_parser -r /etc/apparmor.d/bwrap
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+
+  include if exists <local/bwrap>
+}
