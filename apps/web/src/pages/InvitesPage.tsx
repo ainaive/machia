@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import {
   createInvite,
@@ -21,15 +21,15 @@ export function InvitesPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  function reload() {
+  const reload = useCallback(() => {
     fetchInvites()
       .then((r) => setInvites(r.invites))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }
+  }, []);
 
   useEffect(() => {
     if (user?.role === "admin") reload();
-  }, [user]);
+  }, [user, reload]);
 
   if (loading) {
     return <SiteShell subtitle="加载中…">{null}</SiteShell>;

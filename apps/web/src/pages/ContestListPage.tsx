@@ -1,5 +1,5 @@
 import { Trophy } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import {
   createContest,
@@ -26,11 +26,11 @@ export function ContestListPage() {
   const [gameId, setGameId] = useState("arena");
   const [busy, setBusy] = useState(false);
 
-  function reload() {
+  const reload = useCallback(() => {
     fetchContests()
       .then((r) => setContests(r.contests))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }
+  }, []);
 
   useEffect(() => {
     reload();
@@ -40,7 +40,7 @@ export function ContestListPage() {
         if (r.games[0]) setGameId(r.games[0].id);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+  }, [reload]);
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
