@@ -25,8 +25,9 @@ Self-hosted AI bot competition platform (Bun workspaces). Bots are long-lived No
 Before considering a change done:
 
 1. **`bun run typecheck`** — must pass
-2. **`bun test`** — must pass
-3. For UI-affecting work: **`bun run --filter @machia/web build`** (or full `bun run check`)
+2. **`bun run lint`** — Biome (`biome.json`; lint only, formatting is not enforced), must report nothing
+3. **`bun test`** — must pass
+4. For UI-affecting work: **`bun run --filter @machia/web build`** (or full `bun run check`)
 
 Prefer `bun run check` locally; CI runs the same gates on every PR and `main` push.
 
@@ -60,7 +61,8 @@ bun install
 bun run dev          # web :5173 + api :3001
 bun test
 bun run typecheck
-bun run check        # typecheck + test + web build
+bun run lint
+bun run check        # typecheck + lint + test + web build
 ```
 
 ## Do not

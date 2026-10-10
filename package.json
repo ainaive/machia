@@ -11,6 +11,10 @@
     "test": "bun test packages/engine packages/games-bomber packages/games-tanks packages/games-sokoban packages/games-holdem packages/games-quoridor packages/runner apps/server apps/web",
     "typecheck": "bun run --filter '*' typecheck",
     "build:web": "bun run --filter @machia/web build",
-    "check": "bun run typecheck && bun test && bun run build:web"
+    "lint": "biome lint --error-on-warnings .",
+    "check": "bun run typecheck && bun run lint && bun test && bun run build:web"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15"
   }
 }
