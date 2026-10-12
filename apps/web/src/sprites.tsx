@@ -264,7 +264,7 @@ export function BlastBurst({ size }: { size: number }) {
       style={{ background: "radial-gradient(circle, #ffec9e 0%, #e85d3a 55%, transparent 75%)" }}
       aria-hidden
     >
-      <svg viewBox="0 0 40 40" width={size * 0.9} height={size * 0.9}>
+      <svg viewBox="0 0 40 40" width={size * 0.9} height={size * 0.9} aria-hidden>
         {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
           <polygon
             key={deg}

@@ -92,7 +92,7 @@ export function ContestDetailPage() {
   useEffect(() => {
     if (detail?.contest.status !== "running") return;
     const t = window.setInterval(() => {
-      void reload().catch(() => undefined);
+      void fetchContest(contestId).then(setDetail).catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(t);
   }, [contestId, detail?.contest.status]);

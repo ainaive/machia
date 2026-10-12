@@ -458,7 +458,7 @@ async function loadEntryPlayer(entryId: string): Promise<MatchPlayerSpec> {
        FROM entries e JOIN contests c ON c.id = e.contest_id WHERE e.id = ?`,
     )
     .get(entryId);
-  if (!row || !row.bot_name) throw new Error(`Entry ${entryId} has no bot`);
+  if (!row?.bot_name) throw new Error(`Entry ${entryId} has no bot`);
   const dir = botDirForEntry(defaultUploadsDir(), row.user_id, row.id);
   // Only the reviewed bytes may run: files that differ from the approved
   // hash (a mismatched backup restore, a manual edit) fail the game instead.

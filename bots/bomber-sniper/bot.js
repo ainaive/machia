@@ -7,7 +7,7 @@ const { decide } = require("../bomber-lib.js");
 run({
   act(obs) {
     const self = obs.players.find((p) => p.id === obs.selfId);
-    if (!self || !self.alive) return "WAIT";
+    if (!self?.alive) return "WAIT";
     return decide(obs, self, "sniper");
   },
 });

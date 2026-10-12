@@ -48,7 +48,7 @@ function faceToward(from, to) {
 run({
   act(msg) {
     const self = msg.players.find((p) => p.id === msg.selfId);
-    if (!self || !self.alive) {
+    if (!self?.alive) {
       return "WAIT";
     }
 
