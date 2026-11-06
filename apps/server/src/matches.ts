@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, mkdir, stat } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { BotManifest } from "@machia/protocol";
 import {
@@ -114,12 +114,21 @@ export async function runPlayersMatch(
     seed: options?.seed,
     runner: botRunner,
   });
-  await mkdir(replaysDir(), { recursive: true });
-  await writeFile(
-    path.join(replaysDir(), `${id}.json`),
-    JSON.stringify(replay),
-    "utf8",
-  );
+  const dir = replaysDir();
+  await mkdir(dir, { recursive: true });
+  // Publish the replay with a rename: the library must never read a
+  // half-written file (a partial file that fails to parse is cached as absent
+  // until the directory changes again). The temporary name does not end in
+  // `.json`, so the listers ignore it.
+  const file = path.join(dir, `${id}.json`);
+  const partial = path.join(dir, `.${id}.json.partial`);
+  try {
+    await writeFile(partial, JSON.stringify(replay), "utf8");
+    await rename(partial, file);
+  } catch (err) {
+    await rm(partial, { force: true }).catch(() => undefined);
+    throw err;
+  }
   return replay;
 }
 

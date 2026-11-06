@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, unlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -97,6 +97,21 @@ describe("replay list", () => {
       const updated = await listReplaysIn(dir, { gameId: "arena" });
       expect(updated.total).toBe(3);
       expect(updated.matches[0]!.id).toBe("m_later");
+
+      // Replacing one file with another keeps the JSON count the same, so the
+      // cache must also notice the directory mtime. Pin it to avoid a
+      // same-millisecond timing dependency.
+      await unlink(path.join(dir, "m_new.json"));
+      await writeFile(
+        path.join(dir, "m_replaced.json"),
+        JSON.stringify(replay("m_replaced", "arena", "2026-01-05T00:00:00Z", 7)),
+      );
+      const stamped = new Date("2026-01-06T00:00:00Z");
+      await utimes(dir, stamped, stamped);
+      const replaced = await listReplaysIn(dir, { gameId: "arena" });
+      expect(replaced.total).toBe(3);
+      expect(replaced.matches.map((m) => m.id)).toContain("m_replaced");
+      expect(replaced.matches.map((m) => m.id)).not.toContain("m_new");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
