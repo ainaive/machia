@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { sandboxFromEnv } from "./sandbox";
+import { sandboxFromEnv, sandboxModeFromEnv } from "./sandbox";
 
 const detect = () => "/sys/fs/cgroup/system.slice/machia.service";
 
@@ -7,6 +7,9 @@ describe("sandbox configuration", () => {
   test("bots run unsandboxed unless MACHIA_SANDBOX=bwrap", () => {
     expect(sandboxFromEnv({}, detect)).toBeNull();
     expect(sandboxFromEnv({ MACHIA_SANDBOX: "off" }, detect)).toBeNull();
+    expect(sandboxModeFromEnv({})).toBe("off");
+    expect(sandboxModeFromEnv({ MACHIA_SANDBOX: "bwrap" })).toBe("bwrap");
+    expect(() => sandboxModeFromEnv({ MACHIA_SANDBOX: "docker" })).toThrow(/MACHIA_SANDBOX/);
   });
 
   test("bwrap uses the delegated cgroup and default limits", () => {

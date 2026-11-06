@@ -451,6 +451,11 @@ describe("auth and contests", () => {
     expect(invite.status).toBe(403);
   });
 
+  test("guest cannot read their own page", async () => {
+    expect((await json("/api/me")).status).toBe(401);
+    expect((await json("/api/notifications/read", { method: "POST" })).status).toBe(401);
+  });
+
   test("guest cannot enter", async () => {
     const admin = await adminSession();
     const created = await json("/api/contests", {
@@ -564,6 +569,158 @@ describe("auth and contests", () => {
       expect(row).toMatchObject({ rank: 1, wins: 0, draws: 2 });
     }
   }, 25_000);
+
+  test("players get notices for approval, unapproval and the contest result", async () => {
+    const admin = await adminSession();
+    const bob = await register("bob");
+
+    const empty = await json("/api/me", { cookie: bob.cookie });
+    expect(empty.status).toBe(200);
+    expect(empty.body.contests).toEqual([]);
+    expect(empty.body.notifications).toEqual([]);
+
+    const created = await json("/api/contests", {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ title: "Notices Cup", gameId: "arena" }),
+    });
+    const contestId = (created.body.contest as { id: string }).id;
+    const up = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: arenaFiles("BobBot") }),
+    });
+    const entryId = (up.body.entry as { id: string }).id;
+    await approveEntry(contestId, entryId, admin.cookie);
+
+    let me = await json("/api/me", { cookie: bob.cookie });
+    expect((me.body.contests as Array<{ entry: { status: string } }>)[0]!.entry.status).toBe(
+      "approved",
+    );
+    expect((me.body.notifications as Array<{ kind: string }>).map((n) => n.kind)).toContain(
+      "entry_approved",
+    );
+    expect(me.body.unread).toBe(1);
+
+    // Only an admin can send an approved bot back for review.
+    expect(
+      (
+        await json(`/api/contests/${contestId}/entries/${entryId}/unapprove`, {
+          method: "POST",
+          cookie: bob.cookie,
+        })
+      ).status,
+    ).toBe(403);
+    const unapproved = await json(
+      `/api/contests/${contestId}/entries/${entryId}/unapprove`,
+      { method: "POST", cookie: admin.cookie },
+    );
+    expect(unapproved.status).toBe(200);
+    expect((unapproved.body.entry as { status: string }).status).toBe("pending");
+
+    me = await json("/api/me", { cookie: bob.cookie });
+    expect((me.body.contests as Array<{ entry: { status: string } }>)[0]!.entry.status).toBe(
+      "pending",
+    );
+    expect((me.body.notifications as Array<{ kind: string }>).map((n) => n.kind)).toContain(
+      "entry_unapproved",
+    );
+
+    // The owner can fix the bot and send it back for review.
+    const again = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: arenaFiles("BobBot2") }),
+    });
+    expect((again.body.entry as { status: string }).status).toBe("pending");
+    await approveEntry(contestId, entryId, admin.cookie);
+
+    const adminBot = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ files: arenaFiles("AdminBot") }),
+    });
+    await approveEntry(
+      contestId,
+      (adminBot.body.entry as { id: string }).id,
+      admin.cookie,
+    );
+    expect(
+      (
+        await json(`/api/contests/${contestId}/start`, {
+          method: "POST",
+          cookie: admin.cookie,
+        })
+      ).status,
+    ).toBe(200);
+    await waitForContest(contestId, bob.cookie);
+
+    me = await json("/api/me", { cookie: bob.cookie });
+    const kinds = (me.body.notifications as Array<{ kind: string }>).map((n) => n.kind);
+    expect(kinds).toContain("contest_started");
+    expect(kinds).toContain("contest_finished");
+    expect(me.body.unread).toBeGreaterThan(0);
+
+    const read = await json("/api/notifications/read", {
+      method: "POST",
+      cookie: bob.cookie,
+      body: "{}",
+    });
+    expect(read.status).toBe(200);
+    expect(read.body.unread).toBe(0);
+    expect((await json("/api/me", { cookie: bob.cookie })).body.unread).toBe(0);
+  }, 30_000);
+
+  test("a player can withdraw a pending bot but not an approved one", async () => {
+    const admin = await adminSession();
+    const bob = await register("bob");
+    const created = await json("/api/contests", {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ title: "Withdraw Cup", gameId: "arena" }),
+    });
+    const contestId = (created.body.contest as { id: string }).id;
+
+    const up = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: arenaFiles("BobBot") }),
+    });
+    const entryId = (up.body.entry as { id: string }).id;
+    const withdrawn = await json(
+      `/api/contests/${contestId}/entries/${entryId}/withdraw`,
+      { method: "POST", cookie: bob.cookie },
+    );
+    expect(withdrawn.status).toBe(200);
+    expect((await json("/api/me", { cookie: bob.cookie })).body.contests).toEqual([]);
+
+    // Rejoin, approve, then try to withdraw the pinned version.
+    const again = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: arenaFiles("BobBot") }),
+    });
+    const againId = (again.body.entry as { id: string }).id;
+    await approveEntry(contestId, againId, admin.cookie);
+    expect(
+      (
+        await json(`/api/contests/${contestId}/entries/${againId}/withdraw`, {
+          method: "POST",
+          cookie: bob.cookie,
+        })
+      ).status,
+    ).toBe(409);
+
+    // A mistaken open contest can be removed; players lose the entry with it.
+    expect(
+      (await json(`/api/contests/${contestId}`, { method: "DELETE", cookie: bob.cookie })).status,
+    ).toBe(403);
+    expect(
+      (await json(`/api/contests/${contestId}`, { method: "DELETE", cookie: admin.cookie })).status,
+    ).toBe(200);
+    expect((await json(`/api/contests/${contestId}`, { cookie: admin.cookie })).status).toBe(404);
+    expect((await json("/api/me", { cookie: bob.cookie })).body.contests).toEqual([]);
+  });
 
   test("admin reads a bot's code and approves exactly that version", async () => {
     const admin = await adminSession();

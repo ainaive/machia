@@ -23,7 +23,13 @@ describe("app schema migrations", () => {
     migrateApp(db);
     expect(userVersion(db)).toBe(APP_SCHEMA_VERSION);
     expect(tables(db)).toEqual(
-      expect.arrayContaining(["contests", "entries", "contest_matches", "invite_codes"]),
+      expect.arrayContaining([
+        "contests",
+        "entries",
+        "contest_matches",
+        "invite_codes",
+        "notifications",
+      ]),
     );
   });
 

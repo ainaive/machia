@@ -60,6 +60,12 @@ export function SiteShell({
               比赛
             </Link>
             <Link
+              to="/matches"
+              className="text-ink/70 underline-offset-2 hover:text-moss hover:underline"
+            >
+              回放
+            </Link>
+            <Link
               to="/ladder"
               className="text-ink/70 underline-offset-2 hover:text-moss hover:underline"
             >
@@ -67,6 +73,12 @@ export function SiteShell({
             </Link>
             {user ? (
               <>
+                <Link
+                  to="/me"
+                  className="text-ink/70 underline-offset-2 hover:text-moss hover:underline"
+                >
+                  我的
+                </Link>
                 {user.role === "admin" ? (
                   <Link
                     to="/admin/invites"

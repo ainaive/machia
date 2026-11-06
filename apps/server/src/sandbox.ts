@@ -16,6 +16,17 @@ function limit(
   return value;
 }
 
+export type SandboxMode = "bwrap" | "off";
+
+/** The configured sandbox mode, validated the same way by boot and the health endpoint. */
+export function sandboxModeFromEnv(env: NodeJS.ProcessEnv = process.env): SandboxMode {
+  const mode = env.MACHIA_SANDBOX?.trim() || "off";
+  if (mode !== "off" && mode !== "bwrap") {
+    throw new Error(`MACHIA_SANDBOX must be "bwrap" or "off", not "${mode}"`);
+  }
+  return mode;
+}
+
 /**
  * The bot sandbox the environment asks for, or null to run bots as plain
  * child processes (local development). MACHIA_SANDBOX=bwrap enables it;
@@ -26,11 +37,7 @@ export function sandboxFromEnv(
   env: NodeJS.ProcessEnv = process.env,
   detectCgroup: () => string = detectDelegatedCgroup,
 ): BwrapSandbox | null {
-  const mode = env.MACHIA_SANDBOX?.trim() || "off";
-  if (mode === "off") return null;
-  if (mode !== "bwrap") {
-    throw new Error(`MACHIA_SANDBOX must be "bwrap" or "off", not "${mode}"`);
-  }
+  if (sandboxModeFromEnv(env) === "off") return null;
   const cgroup = env.MACHIA_SANDBOX_CGROUP?.trim() || "auto";
   return new BwrapSandbox({
     cgroupRoot: cgroup === "off" ? null : cgroup === "auto" ? detectCgroup() : cgroup,

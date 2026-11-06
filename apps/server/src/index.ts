@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { cors } from "hono/cors";
 import {
   authSecret,
@@ -10,19 +11,23 @@ import {
 } from "./auth";
 import {
   createContest,
+  deleteContest,
   enterContest,
   getContestDetail,
   getEntryFiles,
+  getMyContests,
   kickContestWorker,
   listContests,
   rerunFailedMatches,
   reviewEntry,
   startContest,
   submitBot,
+  unapproveEntry,
+  withdrawEntry,
 } from "./contests";
 import { SubprocessRunner } from "@machia/runner";
 import { getDb } from "./db";
-import { sandboxFromEnv } from "./sandbox";
+import { sandboxFromEnv, sandboxModeFromEnv } from "./sandbox";
 import { HttpError } from "./errors";
 import { createInvite, deleteInvite, listInvites } from "./invites";
 import { getLadder } from "./ladder";
@@ -37,8 +42,26 @@ import {
   startDemoMatch,
   startMatch,
 } from "./matches";
+import {
+  createRateLimiter,
+  practiceClientKey,
+  practiceLimitFromEnv,
+} from "./practice-limit";
+import { listNotifications, markNotificationsRead } from "./notifications";
 
 export const app = new Hono();
+
+const practiceLimit = practiceLimitFromEnv();
+const practiceLimiter = practiceLimit
+  ? createRateLimiter(practiceLimit.limit, practiceLimit.windowMs)
+  : null;
+
+function practiceRateLimited(c: Context): Response | null {
+  const verdict = practiceLimiter?.check(practiceClientKey(c.req.raw.headers));
+  if (!verdict || verdict.allowed) return null;
+  c.header("Retry-After", String(Math.max(1, Math.ceil(verdict.retryAfterMs / 1000))));
+  return c.json({ error: "Too many practice matches; try again shortly" }, 429);
+}
 
 app.use(
   "/api/*",
@@ -55,12 +78,29 @@ app.use("/api/*", async (c, next) => {
   if (
     pathName.startsWith("/api/auth") ||
     pathName.startsWith("/api/admin") ||
-    pathName.startsWith("/api/contests")
+    pathName.startsWith("/api/contests") ||
+    pathName.startsWith("/api/me") ||
+    pathName.startsWith("/api/notifications")
   ) {
     await getDb();
   }
   await next();
 });
+
+function queryInteger(
+  raw: string | undefined,
+  name: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min || n > max) {
+    throw new HttpError(400, `${name} must be an integer from ${min} to ${max}`);
+  }
+  return n;
+}
 
 function errorStatus(err: unknown): { message: string; status: 400 | 401 | 403 | 404 | 409 | 500 } {
   if (err instanceof HttpError) {
@@ -103,7 +143,9 @@ function isUploadedFile(
   );
 }
 
-app.get("/api/health", (c) => c.json({ ok: true, running: isMatchRunning() }));
+app.get("/api/health", (c) =>
+  c.json({ ok: true, running: isMatchRunning(), sandbox: sandboxModeFromEnv() }),
+);
 
 app.get("/api/games", (c) => c.json({ games: listGames() }));
 
@@ -126,6 +168,38 @@ app.get("/api/auth/me", async (c) => {
 });
 
 app.all("/api/auth/*", (c) => getAuth().handler(c.req.raw));
+
+app.get("/api/me", async (c) => {
+  try {
+    const user = await requireUser(c);
+    const [contests, notices] = await Promise.all([
+      getMyContests(user.id),
+      listNotifications(user.id),
+    ]);
+    return c.json({ contests, ...notices });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/notifications/read", async (c) => {
+  try {
+    const user = await requireUser(c);
+    let id: string | undefined;
+    try {
+      const body = await c.req.json<{ id?: string }>();
+      id = typeof body.id === "string" ? body.id : undefined;
+    } catch {
+      // empty body: mark everything read
+    }
+    const unread = await markNotificationsRead(user.id, id);
+    return c.json({ ok: true, unread });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
 
 app.get("/api/admin/invites", async (c) => {
   try {
@@ -279,6 +353,39 @@ app.post("/api/contests/:id/entries/:entryId/reject", async (c) => {
   }
 });
 
+app.post("/api/contests/:id/entries/:entryId/withdraw", async (c) => {
+  try {
+    const user = await requireUser(c);
+    await withdrawEntry(c.req.param("id"), c.req.param("entryId"), user);
+    return c.json({ ok: true });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.post("/api/contests/:id/entries/:entryId/unapprove", async (c) => {
+  try {
+    await requireAdmin(c);
+    const entry = await unapproveEntry(c.req.param("id"), c.req.param("entryId"));
+    return c.json({ entry });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
+app.delete("/api/contests/:id", async (c) => {
+  try {
+    await requireAdmin(c);
+    await deleteContest(c.req.param("id"));
+    return c.json({ ok: true });
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
+});
+
 app.post("/api/contests/:id/start", async (c) => {
   try {
     await requireAdmin(c);
@@ -312,11 +419,24 @@ app.get("/api/ladder/:gameId", async (c) => {
 });
 
 app.get("/api/matches", async (c) => {
-  const matches = await listReplays();
-  return c.json({ matches });
+  try {
+    const gameId = c.req.query("game")?.trim() || undefined;
+    if (gameId && !listGames().some((g) => g.id === gameId)) {
+      throw new HttpError(400, `Unknown game: ${gameId}`);
+    }
+    const limit = queryInteger(c.req.query("limit"), "limit", 20, 1, 100);
+    const offset = queryInteger(c.req.query("offset"), "offset", 0, 0, 1_000_000);
+    const page = await listReplays({ gameId, limit, offset });
+    return c.json(page);
+  } catch (err) {
+    const { message, status } = errorStatus(err);
+    return c.json({ error: message }, status);
+  }
 });
 
 app.post("/api/matches", async (c) => {
+  const limited = practiceRateLimited(c);
+  if (limited) return limited;
   try {
     const body = await c.req.json<{ botIds?: string[]; gameId?: string }>();
     const gameId = body.gameId ?? "arena";
@@ -335,6 +455,8 @@ app.post("/api/matches", async (c) => {
 });
 
 app.post("/api/matches/demo", async (c) => {
+  const limited = practiceRateLimited(c);
+  if (limited) return limited;
   try {
     let gameId = "arena";
     try {

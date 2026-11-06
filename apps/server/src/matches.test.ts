@@ -1,7 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEMO_BOTS, listBots, loadBot, replaysDir, runPlayersMatch, startMatch } from "./matches";
+import {
+  DEMO_BOTS,
+  listBots,
+  listReplaysIn,
+  loadBot,
+  replaysDir,
+  runPlayersMatch,
+  startMatch,
+} from "./matches";
 
 describe("matches helpers", () => {
   test("listBots finds sample bots", async () => {
@@ -31,6 +40,52 @@ describe("matches helpers", () => {
       for (const id of ids) {
         expect(have.has(id)).toBe(true);
       }
+    }
+  });
+});
+
+describe("replay list", () => {
+  function replay(id: string, gameId: string, createdAt: string, totalTicks: number) {
+    return {
+      id,
+      gameId,
+      createdAt,
+      mapSize: 13,
+      totalTicks,
+      seed: 1,
+      players: [{ playerId: 0, botId: "a", name: "A" }],
+      ticks: [],
+      results: [{ playerId: 0, score: 1, rank: 1 }],
+    };
+  }
+
+  test("filters by game and pages newest first", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "machia-replay-list-"));
+    try {
+      await writeFile(
+        path.join(dir, "m_old.json"),
+        JSON.stringify(replay("m_old", "arena", "2026-01-01T00:00:00Z", 10)),
+      );
+      await writeFile(
+        path.join(dir, "m_new.json"),
+        JSON.stringify(replay("m_new", "arena", "2026-01-03T00:00:00Z", 30)),
+      );
+      await writeFile(
+        path.join(dir, "m_bomber.json"),
+        JSON.stringify(replay("m_bomber", "bomber", "2026-01-02T00:00:00Z", 20)),
+      );
+      await writeFile(path.join(dir, "notes.txt"), "not a replay");
+
+      const all = await listReplaysIn(dir);
+      expect(all.total).toBe(3);
+      expect(all.matches.map((m) => m.id)).toEqual(["m_new", "m_bomber", "m_old"]);
+
+      const arena = await listReplaysIn(dir, { gameId: "arena", limit: 1, offset: 1 });
+      expect(arena.total).toBe(2);
+      expect(arena.matches.map((m) => m.id)).toEqual(["m_old"]);
+      expect(arena.matches[0]!.totalTicks).toBe(10);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

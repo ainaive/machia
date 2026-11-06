@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { rm } from "node:fs/promises";
 import { getGame, randomSeed, type MatchPlayerSpec } from "@machia/runner";
 import type { PublicUser } from "./auth";
 import { botDirForEntry, parseBotFiles, readBotFiles, writeBotFiles } from "./botFiles";
@@ -6,6 +7,7 @@ import { defaultUploadsDir, getDb } from "./db";
 import { HttpError } from "./errors";
 import { newId } from "./ids";
 import { runPlayersMatch } from "./matches";
+import { notify } from "./notifications";
 import {
   computeStandings,
   generateFixtures,
@@ -365,28 +367,48 @@ export async function reviewEntry(contestId: string, entryId: string, decision: 
       if (current.hash !== decision.hash) {
         throw new HttpError(409, "The bot changed after you reviewed it; review it again");
       }
+      const now = new Date().toISOString();
       db.run(
         `UPDATE entries
          SET status = 'approved', reject_reason = NULL, approved_hash = ?, updated_at = ?
          WHERE id = ?`,
-        [current.hash, new Date().toISOString(), entryId],
+        [current.hash, now, entryId],
       );
+      notify(db, {
+        userId: entry.user_id,
+        kind: "entry_approved",
+        title: "Bot 已通过审批",
+        body: `${entry.bot_name} 已通过审批，等待管理员开赛。`,
+        contestId,
+        entryId,
+        dedupeKey: `entry:${entryId}:approved:${now}`,
+      });
     } else {
       const why = (decision.reason ?? "").trim();
       if (!why) throw new HttpError(400, "Reject reason is required");
+      const now = new Date().toISOString();
       db.run(
         `UPDATE entries
          SET status = 'rejected', reject_reason = ?, approved_hash = NULL, updated_at = ?
          WHERE id = ?`,
-        [why, new Date().toISOString(), entryId],
+        [why, now, entryId],
       );
+      notify(db, {
+        userId: entry.user_id,
+        kind: "entry_rejected",
+        title: "Bot 未通过审批",
+        body: `${entry.bot_name ?? "你的 Bot"} 未通过审批：${why}`,
+        contestId,
+        entryId,
+        dedupeKey: `entry:${entryId}:rejected:${now}`,
+      });
     }
     return publicEntry(await contestEntry(contestId, entryId));
   });
 }
 
 export async function startContest(contestId: string) {
-  await contestById(contestId);
+  const contest = await contestById(contestId);
   const db = await getDb();
   const now = new Date().toISOString();
   // One transaction: of two concurrent starts, only one finds the contest
@@ -414,6 +436,22 @@ export async function startContest(contestId: string) {
       );
     }
   })();
+  const approved = db
+    .query<{ id: string; user_id: string }, [string]>(
+      `SELECT id, user_id FROM entries WHERE contest_id = ? AND status = 'approved'`,
+    )
+    .all(contestId);
+  for (const entry of approved) {
+    notify(db, {
+      userId: entry.user_id,
+      kind: "contest_started",
+      title: "比赛已开始",
+      body: `「${contest.title}」已开始，你的 Bot 已进入赛程。`,
+      contestId,
+      entryId: entry.id,
+      dedupeKey: `contest:${contestId}:started:${entry.id}`,
+    });
+  }
   kickContestWorker();
   return getContestDetail(contestId, null);
 }
@@ -438,6 +476,163 @@ export async function rerunFailedMatches(contestId: string, admin: PublicUser) {
   if (requeued === 0) throw new HttpError(400, "No failed matches to rerun");
   kickContestWorker();
   return getContestDetail(contestId, admin);
+}
+
+export interface MyContest {
+  contest: {
+    id: string;
+    title: string;
+    gameId: string;
+    status: ContestStatus;
+    createdAt: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+  };
+  entry: {
+    id: string;
+    status: EntryStatus;
+    botName: string | null;
+    rejectReason: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+/** The signed-in player's entries across all contests, newest contest first. */
+export async function getMyContests(userId: string): Promise<MyContest[]> {
+  const db = await getDb();
+  const rows = db
+    .query<
+      {
+        entry_id: string;
+        entry_status: EntryStatus;
+        bot_name: string | null;
+        reject_reason: string | null;
+        entry_created_at: string;
+        entry_updated_at: string;
+        contest_id: string;
+        title: string;
+        game_id: string;
+        contest_status: ContestStatus;
+        contest_created_at: string;
+        started_at: string | null;
+        finished_at: string | null;
+      },
+      [string]
+    >(
+      `SELECT e.id AS entry_id, e.status AS entry_status, e.bot_name, e.reject_reason,
+              e.created_at AS entry_created_at, e.updated_at AS entry_updated_at,
+              c.id AS contest_id, c.title, c.game_id, c.status AS contest_status,
+              c.created_at AS contest_created_at, c.started_at, c.finished_at
+       FROM entries e JOIN contests c ON c.id = e.contest_id
+       WHERE e.user_id = ?
+       ORDER BY c.created_at DESC, e.created_at DESC`,
+    )
+    .all(userId);
+  return rows.map((row) => ({
+    contest: {
+      id: row.contest_id,
+      title: row.title,
+      gameId: row.game_id,
+      status: row.contest_status,
+      createdAt: row.contest_created_at,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+    },
+    entry: {
+      id: row.entry_id,
+      status: row.entry_status,
+      botName: row.bot_name,
+      rejectReason: row.reject_reason,
+      createdAt: row.entry_created_at,
+      updatedAt: row.entry_updated_at,
+    },
+  }));
+}
+
+/** A player can leave an open contest until their bot is approved. */
+export async function withdrawEntry(
+  contestId: string,
+  entryId: string,
+  user: PublicUser,
+): Promise<void> {
+  const contest = await contestById(contestId);
+  if (contest.status !== "open") {
+    throw new HttpError(409, "Can only withdraw while the contest is open");
+  }
+  const entry = await contestEntry(contestId, entryId);
+  if (entry.user_id !== user.id) {
+    throw new HttpError(403, "Only the bot's owner can withdraw it");
+  }
+  if (entry.status === "approved") {
+    throw new HttpError(409, "Approved bot cannot be withdrawn; ask an admin to unapprove it first");
+  }
+  const db = await getDb();
+  db.run(`DELETE FROM entries WHERE id = ?`, [entryId]);
+  await rm(botDirForEntry(defaultUploadsDir(), entry.user_id, entry.id), {
+    recursive: true,
+    force: true,
+  });
+}
+
+/**
+ * An admin can send an approved bot back for another review before the start.
+ * This keeps the approval pin intact: the owner must submit anew, and nothing
+ * runs until an admin approves that exact version again.
+ */
+export async function unapproveEntry(contestId: string, entryId: string) {
+  const contest = await contestById(contestId);
+  if (contest.status !== "open") {
+    throw new HttpError(409, "Can only unapprove while the contest is open");
+  }
+  const entry = await contestEntry(contestId, entryId);
+  if (entry.status !== "approved") {
+    throw new HttpError(409, "Entry is not approved");
+  }
+  const db = await getDb();
+  const now = new Date().toISOString();
+  db.run(
+    `UPDATE entries
+     SET status = 'pending', approved_hash = NULL, updated_at = ?
+     WHERE id = ?`,
+    [now, entryId],
+  );
+  notify(db, {
+    userId: entry.user_id,
+    kind: "entry_unapproved",
+    title: "Bot 审批已撤回",
+    body: "管理员撤回了审批。请在开赛前重新提交，并等待管理员重新审批。",
+    contestId,
+    entryId,
+    dedupeKey: `entry:${entryId}:unapproved:${now}`,
+  });
+  return publicEntry(await contestEntry(contestId, entryId));
+}
+
+/** Deletes an open contest (a mistake), with its entries and uploaded bots. */
+export async function deleteContest(contestId: string): Promise<void> {
+  const contest = await contestById(contestId);
+  if (contest.status !== "open") {
+    throw new HttpError(409, "Only an open contest can be deleted");
+  }
+  const db = await getDb();
+  const entries = db
+    .query<{ id: string; user_id: string }, [string]>(
+      `SELECT id, user_id FROM entries WHERE contest_id = ?`,
+    )
+    .all(contestId);
+  db.transaction(() => {
+    // An open contest normally has no fixtures, but deleting any stray rows
+    // first keeps the entries' foreign keys from blocking the cascade.
+    db.run(`DELETE FROM contest_matches WHERE contest_id = ?`, [contestId]);
+    db.run(`DELETE FROM contests WHERE id = ?`, [contestId]);
+  })();
+  for (const entry of entries) {
+    await rm(botDirForEntry(defaultUploadsDir(), entry.user_id, entry.id), {
+      recursive: true,
+      force: true,
+    }).catch(() => undefined);
+  }
 }
 
 async function loadEntryPlayer(entryId: string): Promise<MatchPlayerSpec> {
@@ -488,10 +683,32 @@ function finishContestIfDone(db: Database, contestId: string): void {
     )
     .get(contestId);
   if (left) return;
-  db.run(
+  const now = new Date().toISOString();
+  const finished = db.run(
     `UPDATE contests SET status = 'finished', finished_at = ? WHERE id = ? AND status = 'running'`,
-    [new Date().toISOString(), contestId],
+    [now, contestId],
   );
+  if (finished.changes === 0) return;
+  const contest = db
+    .query<{ title: string }, [string]>(`SELECT title FROM contests WHERE id = ?`)
+    .get(contestId);
+  if (!contest) return;
+  const entries = db
+    .query<{ id: string; user_id: string }, [string]>(
+      `SELECT id, user_id FROM entries WHERE contest_id = ? AND status = 'approved'`,
+    )
+    .all(contestId);
+  for (const entry of entries) {
+    notify(db, {
+      userId: entry.user_id,
+      kind: "contest_finished",
+      title: "比赛已结束",
+      body: `「${contest.title}」已结束，去赛事页查看名次与回放。`,
+      contestId,
+      entryId: entry.id,
+      dedupeKey: `contest:${contestId}:finished:${entry.id}`,
+    });
+  }
 }
 
 async function finishReadyContests(): Promise<void> {

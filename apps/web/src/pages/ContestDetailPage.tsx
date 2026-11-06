@@ -1,19 +1,24 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   approveEntry,
+  deleteContest,
   fetchContest,
   fetchEntryFiles,
+  fetchHealth,
   rejectEntry,
   rerunFailedMatches,
   startContest,
   submitContestBot,
+  unapproveEntry,
+  withdrawEntry,
   type BotFiles,
   type ContestDetail,
   type ContestEntry,
   type ContestMatch,
 } from "../api";
+import { ApprovalNotice } from "../ApprovalNotice";
 import { useAuth } from "../auth";
 import { RulesPanel } from "../RulesPanel";
 import { SiteShell } from "../SiteShell";
@@ -62,10 +67,12 @@ function entryLabel(entries: ContestEntry[], id: string): string {
 
 export function ContestDetailPage() {
   const { contestId = "" } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [detail, setDetail] = useState<ContestDetail | null | undefined>(
     undefined,
   );
+  const [sandboxed, setSandboxed] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [rejectWhy, setRejectWhy] = useState<Record<string, string>>({});
@@ -88,6 +95,14 @@ export function ContestDetailPage() {
         setDetail(null);
       });
   }, [contestId]);
+
+  // The sandbox is a server setting, not a contest setting. Unknown (null)
+  // keeps the copy honest if the health check fails.
+  useEffect(() => {
+    fetchHealth()
+      .then((r) => setSandboxed(r.sandbox === "bwrap"))
+      .catch(() => setSandboxed(null));
+  }, []);
 
   useEffect(() => {
     if (detail?.contest.status !== "running") return;
@@ -157,6 +172,11 @@ export function ContestDetailPage() {
     contest.status === "open" &&
     user &&
     myEntry?.status !== "approved";
+  const canWithdraw =
+    contest.status === "open" &&
+    !!user &&
+    !!myEntry &&
+    myEntry.status !== "approved";
 
   return (
     <SiteShell accent={accent} subtitle={`${game.name} · 1v1 循环赛，每对交换座位各打一局，按胜场、平局、总分排名。`}>
@@ -180,10 +200,7 @@ export function ContestDetailPage() {
         </div>
       )}
 
-      <p className="mb-6 max-w-2xl text-sm text-ink/65">
-        管理员查看并审阅提交的 Node Bot 代码后开赛。审批视为信任这一版源码；平台不提供隔离沙箱。
-        练习场仍可免登录使用样例 Bot。
-      </p>
+      <ApprovalNotice sandboxed={sandboxed} />
 
       <div className="grid gap-8 lg:grid-cols-[1fr_280px]">
         <section className="space-y-6">
@@ -205,6 +222,20 @@ export function ContestDetailPage() {
                   ? ` · ${myEntry.rejectReason}`
                   : ""}
               </p>
+            )}
+            {canWithdraw && myEntry && (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() =>
+                  void wrap("withdraw", () =>
+                    withdrawEntry(contest.id, myEntry.id),
+                  )
+                }
+                className="mb-3 mr-2 rounded-md border border-clay/40 px-3 py-1.5 text-xs font-medium text-clay disabled:opacity-40"
+              >
+                {busy === "withdraw" ? "退出中…" : "退出赛事"}
+              </button>
             )}
             {canUpload && (
               <form onSubmit={(e) => void onSubmitBot(e)} className="space-y-2">
@@ -228,7 +259,9 @@ export function ContestDetailPage() {
               </form>
             )}
             {myEntry?.status === "approved" && contest.status === "open" && (
-              <p className="text-sm text-ink/60">已通过，等待管理员开赛。</p>
+              <p className="text-sm text-ink/60">
+                已通过，等待管理员开赛。如需修改，请联系管理员撤回审批。
+              </p>
             )}
           </div>
 
@@ -242,6 +275,8 @@ export function ContestDetailPage() {
                 const canReview = isAdmin && contest.status === "open" && e.status !== "approved";
                 const canRepin =
                   isAdmin && contest.status !== "open" && e.status === "approved" && failedCount > 0;
+                const canUnapprove =
+                  isAdmin && contest.status === "open" && e.status === "approved";
                 return (
                 <li
                   key={e.id}
@@ -252,34 +287,38 @@ export function ContestDetailPage() {
                     {e.botName ? ` · ${e.botName}` : ""}
                     <span className="ml-2 text-ink/45">{STATUS_LABEL[e.status]}</span>
                   </span>
-                  {(canReview || canRepin) && (
+                  {(canReview || canRepin || canUnapprove) && (
                       <span className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={!e.botName || busy !== null}
-                          onClick={() =>
-                            void wrap("review", async () => {
-                              const files = await fetchEntryFiles(contest.id, e.id);
-                              setReviewed((prev) => ({ ...prev, [e.id]: files }));
-                            })
-                          }
-                          className="rounded-md border border-moss/40 px-2 py-1 text-xs text-moss disabled:opacity-40"
-                        >
-                          {reviewed[e.id] ? "刷新代码" : "查看代码"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!reviewed[e.id] || busy !== null}
-                          title={reviewed[e.id] ? undefined : "先查看代码再通过"}
-                          onClick={() =>
-                            void wrap("approve", () =>
-                              approveEntry(contest.id, e.id, reviewed[e.id]!.hash),
-                            )
-                          }
-                          className="rounded-md bg-moss px-2 py-1 text-xs text-paper disabled:opacity-40"
-                        >
-                          {canRepin ? "重新批准此版本" : "通过"}
-                        </button>
+                        {(canReview || canRepin) && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={!e.botName || busy !== null}
+                              onClick={() =>
+                                void wrap("review", async () => {
+                                  const files = await fetchEntryFiles(contest.id, e.id);
+                                  setReviewed((prev) => ({ ...prev, [e.id]: files }));
+                                })
+                              }
+                              className="rounded-md border border-moss/40 px-2 py-1 text-xs text-moss disabled:opacity-40"
+                            >
+                              {reviewed[e.id] ? "刷新代码" : "查看代码"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!reviewed[e.id] || busy !== null}
+                              title={reviewed[e.id] ? undefined : "先查看代码再通过"}
+                              onClick={() =>
+                                void wrap("approve", () =>
+                                  approveEntry(contest.id, e.id, reviewed[e.id]!.hash),
+                                )
+                              }
+                              className="rounded-md bg-moss px-2 py-1 text-xs text-paper disabled:opacity-40"
+                            >
+                              {canRepin ? "重新批准此版本" : "通过"}
+                            </button>
+                          </>
+                        )}
                         {canReview && (
                           <>
                             <input
@@ -310,6 +349,18 @@ export function ContestDetailPage() {
                               拒绝
                             </button>
                           </>
+                        )}
+                        {canUnapprove && (
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() =>
+                              void wrap("unapprove", () => unapproveEntry(contest.id, e.id))
+                            }
+                            className="rounded-md border border-clay/40 px-2 py-1 text-xs text-clay disabled:opacity-40"
+                          >
+                            撤回审批
+                          </button>
                         )}
                       </span>
                     )}
@@ -420,6 +471,28 @@ export function ContestDetailPage() {
               className="w-full rounded-md bg-clay px-4 py-3 font-display font-bold text-paper shadow-[0_8px_24px_-8px_rgba(196,92,38,0.55)] disabled:opacity-40"
             >
               {busy === "start" ? "开赛中…" : "开始循环赛"}
+            </button>
+          )}
+          {user?.role === "admin" && contest.status === "open" && (
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => {
+                if (!window.confirm(`删除赛事「${contest.title}」？报名与上传的 Bot 都会删除。`)) {
+                  return;
+                }
+                setError(null);
+                setBusy("delete");
+                deleteContest(contest.id)
+                  .then(() => navigate("/contests"))
+                  .catch((e) => {
+                    setError(e instanceof Error ? e.message : String(e));
+                    setBusy(null);
+                  });
+              }}
+              className="w-full rounded-md border border-ink/15 px-4 py-2 text-sm font-medium text-ink/60 disabled:opacity-40"
+            >
+              {busy === "delete" ? "删除中…" : "删除赛事"}
             </button>
           )}
           {user?.role === "admin" && failedCount > 0 && (
