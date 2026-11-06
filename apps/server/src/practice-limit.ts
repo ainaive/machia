@@ -16,16 +16,27 @@ export interface RateLimiter {
   reset(): void;
 }
 
-export function createRateLimiter(limit: number, windowMs: number): RateLimiter {
+/** Enough for a self-hosted deployment; a full map rejects new clients. */
+export const DEFAULT_MAX_TRACKED_CLIENTS = 10_000;
+
+export function createRateLimiter(
+  limit: number,
+  windowMs: number,
+  maxClients = DEFAULT_MAX_TRACKED_CLIENTS,
+): RateLimiter {
   const hits = new Map<string, { count: number; resetAt: number }>();
   return {
     check(key, now = Date.now()) {
-      // Keep a hostile client from growing this map without bound.
-      if (hits.size > 1000) {
-        for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
-      }
       const entry = hits.get(key);
       if (!entry || entry.resetAt <= now) {
+        if (!hits.has(key) && hits.size >= maxClients) {
+          // Only pay for a scan when the map is full, then refuse a new key
+          // rather than evicting a client that is still within its window.
+          for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
+          if (hits.size >= maxClients) {
+            return { allowed: false, retryAfterMs: windowMs };
+          }
+        }
         hits.set(key, { count: 1, resetAt: now + windowMs });
         return { allowed: true, retryAfterMs: 0 };
       }
@@ -59,8 +70,16 @@ export function practiceLimitFromEnv(env: NodeJS.ProcessEnv = process.env): Prac
   return { limit, windowMs: 60_000 };
 }
 
-/** Behind nginx, X-Real-IP is set by the proxy; X-Forwarded-For is the fallback. */
-export function practiceClientKey(headers: Headers): string {
+/**
+ * Behind nginx, X-Real-IP is set by the proxy; X-Forwarded-For is the fallback.
+ * Trusting those headers is opt-in (`MACHIA_TRUST_PROXY=1`): on a directly
+ * reachable API a caller could otherwise rotate them to bypass the limit.
+ */
+export function practiceClientKey(
+  headers: Headers,
+  trustProxy = process.env.MACHIA_TRUST_PROXY === "1",
+): string {
+  if (!trustProxy) return "local";
   const real = headers.get("x-real-ip")?.trim();
   if (real) return real;
   const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();

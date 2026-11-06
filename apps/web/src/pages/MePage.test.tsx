@@ -14,6 +14,7 @@ const arena: GameInfo = {
 
 const data: MyPage = {
   unread: 1,
+  notificationsTotal: 2,
   notifications: [
     {
       id: "n1",
@@ -62,7 +63,14 @@ const data: MyPage = {
 function render(payload: MyPage) {
   return renderToStaticMarkup(
     <MemoryRouter>
-      <MeView data={payload} games={[arena]} busy={false} onMarkAllRead={() => {}} />
+      <MeView
+        data={payload}
+        games={[arena]}
+        busy={false}
+        loadingMore={false}
+        onMarkAllRead={() => {}}
+        onLoadMore={() => {}}
+      />
     </MemoryRouter>,
   );
 }
@@ -86,9 +94,14 @@ describe("MeView", () => {
   });
 
   test("explains empty notifications and entries", () => {
-    const html = render({ unread: 0, notifications: [], contests: [] });
+    const html = render({ unread: 0, notifications: [], notificationsTotal: 0, contests: [] });
     expect(html).toContain("还没有通知");
     expect(html).toContain("还没有报名任何赛事");
     expect(html).not.toContain("全部标为已读");
+  });
+
+  test("offers to load notices older than the first page", () => {
+    const html = render({ ...data, notificationsTotal: 5 });
+    expect(html).toContain("加载更早的通知（还有 3 条）");
   });
 });

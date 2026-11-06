@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { packBot } from "@machia/runner";
@@ -7,6 +7,7 @@ import { app } from "./index";
 import * as botFiles from "./botFiles";
 import { parseBotFiles } from "./botFiles";
 import { closeDatabase, getDb, resetDatabase } from "./db";
+import { notify } from "./notifications";
 import {
   getEntryFiles,
   reviewEntry,
@@ -456,6 +457,35 @@ describe("auth and contests", () => {
     expect((await json("/api/notifications/read", { method: "POST" })).status).toBe(401);
   });
 
+  test("notification inbox pages older notices and keeps the unread count", async () => {
+    const bob = await register("bob");
+    const userId = (bob.body.user as { id: string }).id;
+    const db = await getDb();
+    for (let i = 0; i < 5; i++) {
+      notify(db, {
+        userId,
+        kind: "entry_approved",
+        title: `通知 ${i}`,
+        dedupeKey: `test:${i}`,
+      });
+    }
+
+    const first = await json("/api/me?notificationsLimit=2", { cookie: bob.cookie });
+    expect(first.status).toBe(200);
+    expect(first.body.notificationsTotal).toBe(5);
+    expect(first.body.unread).toBe(5);
+    const firstIds = (first.body.notifications as Array<{ id: string }>).map((n) => n.id);
+    expect(firstIds).toHaveLength(2);
+
+    const second = await json("/api/me?notificationsLimit=2&notificationsOffset=2", {
+      cookie: bob.cookie,
+    });
+    const secondIds = (second.body.notifications as Array<{ id: string }>).map((n) => n.id);
+    expect(secondIds).toHaveLength(2);
+    expect(new Set([...firstIds, ...secondIds]).size).toBe(4);
+    expect((await json("/api/me?notificationsLimit=0", { cookie: bob.cookie })).status).toBe(400);
+  });
+
   test("guest cannot enter", async () => {
     const admin = await adminSession();
     const created = await json("/api/contests", {
@@ -660,6 +690,28 @@ describe("auth and contests", () => {
     expect(kinds).toContain("contest_started");
     expect(kinds).toContain("contest_finished");
     expect(me.body.unread).toBeGreaterThan(0);
+    expect(me.body.notificationsTotal).toBeGreaterThanOrEqual(kinds.length);
+
+    // A malformed body or a non-string id must not silently mark everything read.
+    expect(
+      (
+        await json("/api/notifications/read", {
+          method: "POST",
+          cookie: bob.cookie,
+          body: "{",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await json("/api/notifications/read", {
+          method: "POST",
+          cookie: bob.cookie,
+          body: JSON.stringify({ id: 42 }),
+        })
+      ).status,
+    ).toBe(400);
+    expect((await json("/api/me", { cookie: bob.cookie })).body.unread).toBeGreaterThan(0);
 
     const read = await json("/api/notifications/read", {
       method: "POST",
@@ -687,11 +739,15 @@ describe("auth and contests", () => {
       body: JSON.stringify({ files: arenaFiles("BobBot") }),
     });
     const entryId = (up.body.entry as { id: string }).id;
+    const bobId = (bob.body.user as { id: string }).id;
+    const uploadDir = path.join(process.env.MACHIA_UPLOADS_DIR!, bobId, entryId);
+    expect(existsSync(uploadDir)).toBe(true);
     const withdrawn = await json(
       `/api/contests/${contestId}/entries/${entryId}/withdraw`,
       { method: "POST", cookie: bob.cookie },
     );
     expect(withdrawn.status).toBe(200);
+    expect(existsSync(uploadDir)).toBe(false);
     expect((await json("/api/me", { cookie: bob.cookie })).body.contests).toEqual([]);
 
     // Rejoin, approve, then try to withdraw the pinned version.
@@ -702,6 +758,8 @@ describe("auth and contests", () => {
     });
     const againId = (again.body.entry as { id: string }).id;
     await approveEntry(contestId, againId, admin.cookie);
+    const againDir = path.join(process.env.MACHIA_UPLOADS_DIR!, bobId, againId);
+    expect(existsSync(againDir)).toBe(true);
     expect(
       (
         await json(`/api/contests/${contestId}/entries/${againId}/withdraw`, {
@@ -719,6 +777,7 @@ describe("auth and contests", () => {
       (await json(`/api/contests/${contestId}`, { method: "DELETE", cookie: admin.cookie })).status,
     ).toBe(200);
     expect((await json(`/api/contests/${contestId}`, { cookie: admin.cookie })).status).toBe(404);
+    expect(existsSync(againDir)).toBe(false);
     expect((await json("/api/me", { cookie: bob.cookie })).body.contests).toEqual([]);
   });
 
@@ -772,6 +831,14 @@ describe("auth and contests", () => {
     const approved = await approveEntry(contestId, entryId, admin.cookie);
     expect(approved.status).toBe(200);
     expect((approved.body.entry as { status: string }).status).toBe("approved");
+
+    // Re-approving the same reviewed bytes is a retry, not a second notice.
+    const noticesBefore = (await json("/api/me", { cookie: bob.cookie })).body
+      .notifications as unknown[];
+    expect((await approveEntry(contestId, entryId, admin.cookie)).status).toBe(200);
+    const noticesAfter = (await json("/api/me", { cookie: bob.cookie })).body
+      .notifications as unknown[];
+    expect(noticesAfter).toHaveLength(noticesBefore.length);
   });
 
   test("an upload racing an approval never leaves unreviewed code approved", async () => {

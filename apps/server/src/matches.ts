@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type { BotManifest } from "@machia/protocol";
 import {
@@ -218,29 +218,64 @@ export interface ReplayQuery {
   offset?: number;
 }
 
-/** Reads and filters every replay in `dir`; exported so tests can use a temp dir. */
-export async function listReplaysIn(dir: string, query: ReplayQuery = {}): Promise<ReplayPage> {
-  const limit = query.limit ?? 20;
-  const offset = query.offset ?? 0;
+/**
+ * The replay library is opened repeatedly while browsing. Parsing every
+ * (large, tick-bearing) replay JSON on every page request is wasteful, so
+ * keep the extracted summaries keyed by the directory's mtime and file count.
+ * Replays are immutable after they are written; a new match changes both.
+ */
+interface ReplayIndex {
+  dir: string;
+  mtimeMs: number;
+  count: number;
+  summaries: ReplaySummary[];
+}
+
+let replayIndex: ReplayIndex | null = null;
+
+async function summariesIn(dir: string, files: string[]): Promise<ReplaySummary[]> {
   await mkdir(dir, { recursive: true });
-  const files = await readdir(dir);
-  const out: ReplaySummary[] = [];
+  const info = await stat(dir);
+  if (
+    replayIndex?.dir === dir &&
+    replayIndex.mtimeMs === info.mtimeMs &&
+    replayIndex.count === files.length
+  ) {
+    return replayIndex.summaries;
+  }
+  const summaries: ReplaySummary[] = [];
   for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    const replay = await readReplayAt(dir, file.replace(/\.json$/, ""));
+    // Link by the file name that actually exists: a replay whose internal id
+    // disagrees with its file name must not produce a dead link.
+    const id = file.slice(0, -".json".length);
+    const replay = await readReplayAt(dir, id);
     if (!replay) continue;
-    const gameId = replay.gameId ?? "arena";
-    if (query.gameId && gameId !== query.gameId) continue;
-    out.push({
-      id: replay.id,
-      gameId,
+    // An old or hand-made file without a timestamp would crash the sort.
+    if (typeof replay.createdAt !== "string" || replay.createdAt.length === 0) continue;
+    summaries.push({
+      id,
+      gameId: replay.gameId ?? "arena",
       createdAt: replay.createdAt,
       totalTicks: replay.totalTicks,
       players: replay.players,
       results: replay.results,
     });
   }
-  out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  summaries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  replayIndex = { dir, mtimeMs: info.mtimeMs, count: files.length, summaries };
+  return summaries;
+}
+
+/** Reads and filters every replay in `dir`; exported so tests can use a temp dir. */
+export async function listReplaysIn(dir: string, query: ReplayQuery = {}): Promise<ReplayPage> {
+  const limit = query.limit ?? 20;
+  const offset = query.offset ?? 0;
+  await mkdir(dir, { recursive: true });
+  const files = (await readdir(dir)).filter((file) => file.endsWith(".json"));
+  const summaries = await summariesIn(dir, files);
+  const out = query.gameId
+    ? summaries.filter((summary) => summary.gameId === query.gameId)
+    : summaries;
   return {
     matches: out.slice(offset, offset + limit),
     total: out.length,

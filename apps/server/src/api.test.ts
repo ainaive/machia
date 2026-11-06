@@ -117,25 +117,32 @@ describe("API", () => {
   });
 
   test("practice endpoints rate-limit one client", async () => {
-    const headers = {
-      "Content-Type": "application/json",
-      "x-real-ip": "198.51.100.42",
-    };
-    for (let i = 0; i < 20; i++) {
-      const res = await app.request("/api/matches", {
+    const previous = process.env.MACHIA_TRUST_PROXY;
+    process.env.MACHIA_TRUST_PROXY = "1";
+    try {
+      const headers = {
+        "Content-Type": "application/json",
+        "x-real-ip": "198.51.100.42",
+      };
+      for (let i = 0; i < 20; i++) {
+        const res = await app.request("/api/matches", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ gameId: "bomber", botIds: [] }),
+        });
+        expect(res.status).toBe(400);
+      }
+      const blocked = await app.request("/api/matches/demo", {
         method: "POST",
         headers,
-        body: JSON.stringify({ gameId: "bomber", botIds: [] }),
+        body: JSON.stringify({ gameId: "bomber" }),
       });
-      expect(res.status).toBe(400);
+      expect(blocked.status).toBe(429);
+      expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+    } finally {
+      if (previous === undefined) delete process.env.MACHIA_TRUST_PROXY;
+      else process.env.MACHIA_TRUST_PROXY = previous;
     }
-    const blocked = await app.request("/api/matches/demo", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ gameId: "bomber" }),
-    });
-    expect(blocked.status).toBe(429);
-    expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
   });
 
   test("serverListenConfig defaults to port 3001 on all interfaces", () => {

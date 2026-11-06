@@ -43,6 +43,7 @@ bun run dev
 | `MACHIA_REPLAYS_DIR` | `data/replays` | 对局回放目录（`bun test` 会自动指向临时目录） |
 | `MACHIA_CONTEST_MAX_TICKS` | 各游戏默认 | 赛事对局最大回合数 |
 | `MACHIA_PRACTICE_RATE_LIMIT` | `20` | 每个客户端每分钟最多发起的练习对局数；`0` 关闭 |
+| `MACHIA_TRUST_PROXY` | `off` | 设为 `1` 时信任 `X-Real-IP` / `X-Forwarded-For`（仅当 API 只在受信反向代理后可达时开启） |
 | `MACHIA_AUTH_RATE_LIMIT` | 开启 | 设为 `0` 关闭登录/注册限流（仅测试用） |
 | `MACHIA_SMTP_HOST` / `_PORT` / `_USER` / `_PASS` / `_FROM` | — / `587` | 重置密码邮件；未配置时链接写入日志 |
 

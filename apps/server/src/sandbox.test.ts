@@ -8,6 +8,7 @@ describe("sandbox configuration", () => {
     expect(sandboxFromEnv({}, detect)).toBeNull();
     expect(sandboxFromEnv({ MACHIA_SANDBOX: "off" }, detect)).toBeNull();
     expect(sandboxModeFromEnv({})).toBe("off");
+    expect(sandboxModeFromEnv({ MACHIA_SANDBOX: " off " })).toBe("off");
     expect(sandboxModeFromEnv({ MACHIA_SANDBOX: "bwrap" })).toBe("bwrap");
     expect(() => sandboxModeFromEnv({ MACHIA_SANDBOX: "docker" })).toThrow(/MACHIA_SANDBOX/);
   });

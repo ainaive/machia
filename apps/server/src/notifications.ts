@@ -92,22 +92,25 @@ export function notify(
 export async function listNotifications(
   userId: string,
   limit = 30,
-): Promise<{ notifications: PublicNotification[]; unread: number }> {
+  offset = 0,
+): Promise<{ notifications: PublicNotification[]; unread: number; total: number }> {
   const db = await getDb();
   const rows = db
-    .query<NotificationRow, [string, number]>(
+    .query<NotificationRow, [string, number, number]>(
       `SELECT * FROM notifications
        WHERE user_id = ?
        ORDER BY created_at DESC, rowid DESC
-       LIMIT ?`,
+       LIMIT ? OFFSET ?`,
     )
-    .all(userId, limit);
-  const unread = db
-    .query<{ count: number }, [string]>(
-      `SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND read_at IS NULL`,
+    .all(userId, limit, offset);
+  const counts = db
+    .query<{ total: number; unread: number }, [string]>(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END), 0) AS unread
+       FROM notifications WHERE user_id = ?`,
     )
-    .get(userId)!.count;
-  return { notifications: rows.map(publicNotification), unread };
+    .get(userId)!;
+  return { notifications: rows.map(publicNotification), unread: counts.unread, total: counts.total };
 }
 
 /** Marks one of the user's notices, or all of them, as read. Returns the remaining unread. */

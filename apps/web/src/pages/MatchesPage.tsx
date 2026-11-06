@@ -12,6 +12,7 @@ import { SiteShell } from "../SiteShell";
 import { gameAccent } from "../gameAccent";
 
 const PAGE_SIZE = 20;
+const MAX_OFFSET = 1_000_000;
 
 function gameName(games: GameInfo[], id: string): string {
   return games.find((g) => g.id === id)?.name ?? id;
@@ -88,7 +89,7 @@ export function ReplayList({
         </ul>
       )}
 
-      {page.total > 0 && (
+      {page.total > 0 && page.matches.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-ink/55">
           <span>
             第 {from}–{to} 条，共 {page.total} 条
@@ -144,7 +145,9 @@ export function MatchesPage() {
   const gameId = searchParams.get("game") ?? "";
   const parsedOffset = Number(searchParams.get("offset") ?? 0);
   const offset =
-    Number.isInteger(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+    Number.isInteger(parsedOffset) && parsedOffset >= 0 && parsedOffset <= MAX_OFFSET
+      ? parsedOffset
+      : 0;
 
   const [games, setGames] = useState<GameInfo[]>([]);
   const [page, setPage] = useState<ReplayPage>();
@@ -191,6 +194,18 @@ export function MatchesPage() {
     },
     [searchParams, setSearchParams],
   );
+
+  // A valid but too-large offset (an old link, or the list shrank) returns an
+  // empty page with a non-zero total. Go back to the first page instead of
+  // showing an inverted range.
+  useEffect(() => {
+    if (!page || offset === 0) return;
+    if (page.total > 0 && page.matches.length === 0) {
+      const params = new URLSearchParams(searchParams);
+      params.delete("offset");
+      setSearchParams(params, { replace: true });
+    }
+  }, [page, offset, searchParams, setSearchParams]);
 
   return (
     <SiteShell

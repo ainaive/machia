@@ -62,9 +62,11 @@ describe("replay list", () => {
   test("filters by game and pages newest first", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "machia-replay-list-"));
     try {
+      // The URL has to use the file that exists, even if the JSON's own id
+      // disagrees (an old or hand-made replay).
       await writeFile(
         path.join(dir, "m_old.json"),
-        JSON.stringify(replay("m_old", "arena", "2026-01-01T00:00:00Z", 10)),
+        JSON.stringify(replay("different-id", "arena", "2026-01-01T00:00:00Z", 10)),
       );
       await writeFile(
         path.join(dir, "m_new.json"),
@@ -74,16 +76,27 @@ describe("replay list", () => {
         path.join(dir, "m_bomber.json"),
         JSON.stringify(replay("m_bomber", "bomber", "2026-01-02T00:00:00Z", 20)),
       );
+      await writeFile(path.join(dir, "m_no_date.json"), JSON.stringify({ ...replay("m_no_date", "arena", "x", 1), createdAt: undefined }));
       await writeFile(path.join(dir, "notes.txt"), "not a replay");
 
       const all = await listReplaysIn(dir);
       expect(all.total).toBe(3);
       expect(all.matches.map((m) => m.id)).toEqual(["m_new", "m_bomber", "m_old"]);
+      expect(all.matches.map((m) => m.id)).not.toContain("different-id");
 
       const arena = await listReplaysIn(dir, { gameId: "arena", limit: 1, offset: 1 });
       expect(arena.total).toBe(2);
       expect(arena.matches.map((m) => m.id)).toEqual(["m_old"]);
       expect(arena.matches[0]!.totalTicks).toBe(10);
+
+      // A new replay invalidates the cached summary list.
+      await writeFile(
+        path.join(dir, "m_later.json"),
+        JSON.stringify(replay("m_later", "arena", "2026-01-04T00:00:00Z", 5)),
+      );
+      const updated = await listReplaysIn(dir, { gameId: "arena" });
+      expect(updated.total).toBe(3);
+      expect(updated.matches[0]!.id).toBe("m_later");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

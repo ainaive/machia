@@ -39,12 +39,16 @@ export function MeView({
   data,
   games,
   busy,
+  loadingMore,
   onMarkAllRead,
+  onLoadMore,
 }: {
   data: MyPage;
   games: GameInfo[];
   busy: boolean;
+  loadingMore: boolean;
   onMarkAllRead: () => void;
+  onLoadMore: () => void;
 }) {
   return (
     <div className="space-y-8">
@@ -104,6 +108,18 @@ export function MeView({
             ))}
           </ul>
         )}
+        {data.notifications.length < data.notificationsTotal && (
+          <button
+            type="button"
+            disabled={loadingMore}
+            onClick={onLoadMore}
+            className="mt-2 w-full rounded-md border border-ink/15 px-3 py-2 text-sm font-medium text-ink/65 hover:bg-moss/5 disabled:opacity-40"
+          >
+            {loadingMore
+              ? "加载中…"
+              : `加载更早的通知（还有 ${data.notificationsTotal - data.notifications.length} 条）`}
+          </button>
+        )}
       </section>
 
       <section>
@@ -155,6 +171,7 @@ export function MePage() {
   const [games, setGames] = useState<GameInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const reload = useCallback(() => {
     setError(null);
@@ -180,6 +197,32 @@ export function MePage() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadMore() {
+    if (!data || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const next = await fetchMyPage({ notificationsOffset: data.notifications.length });
+      setData((prev) => {
+        if (!prev) return next;
+        const seen = new Set(prev.notifications.map((n) => n.id));
+        return {
+          ...prev,
+          contests: next.contests,
+          notifications: [
+            ...prev.notifications,
+            ...next.notifications.filter((n) => !seen.has(n.id)),
+          ],
+          unread: next.unread,
+          notificationsTotal: next.notificationsTotal,
+        };
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -215,7 +258,14 @@ export function MePage() {
         </div>
       ) : null}
       {data ? (
-        <MeView data={data} games={games} busy={busy} onMarkAllRead={() => void markAllRead()} />
+        <MeView
+          data={data}
+          games={games}
+          busy={busy}
+          loadingMore={loadingMore}
+          onMarkAllRead={() => void markAllRead()}
+          onLoadMore={() => void loadMore()}
+        />
       ) : (
         <div className="flex justify-center py-24">
           <Loader2 className="animate-spin text-moss" size={28} />

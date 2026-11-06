@@ -14,6 +14,8 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
 # Run bots in bubblewrap with per-bot limits (docs/deploy.md, "Bot sandbox").
 Environment=MACHIA_SANDBOX=bwrap
+# nginx is the only public entry point; use its X-Real-IP for practice limits.
+Environment=MACHIA_TRUST_PROXY=1
 ExecStart=/usr/local/bin/bun run --filter @machia/server start
 Restart=on-failure
 RestartSec=3

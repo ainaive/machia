@@ -9,8 +9,8 @@ export function ApprovalNotice({ sandboxed }: { sandboxed: boolean | null }) {
       {sandboxed === true ? (
         <>
           管理员查看并审阅提交的 Node Bot 代码后开赛。当前服务器在{" "}
-          <strong>bubblewrap 沙箱</strong>中运行 Bot：无网络、只能看到自己的目录（只读），
-          并限制内存、进程和 CPU。审批仍是信任决定，但代码接触不到服务器数据或其他选手。
+          <strong>bubblewrap 沙箱</strong>中运行 Bot：无网络、只能看到自己的目录（只读）。
+          审批仍是信任决定，但代码接触不到服务器数据或其他选手。
         </>
       ) : sandboxed === false ? (
         <>

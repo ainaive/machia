@@ -172,11 +172,20 @@ app.all("/api/auth/*", (c) => getAuth().handler(c.req.raw));
 app.get("/api/me", async (c) => {
   try {
     const user = await requireUser(c);
+    const limit = queryInteger(c.req.query("notificationsLimit"), "notificationsLimit", 30, 1, 100);
+    const offset = queryInteger(
+      c.req.query("notificationsOffset"),
+      "notificationsOffset",
+      0,
+      0,
+      1_000_000,
+    );
     const [contests, notices] = await Promise.all([
       getMyContests(user.id),
-      listNotifications(user.id),
+      listNotifications(user.id, limit, offset),
     ]);
-    return c.json({ contests, ...notices });
+    const { total, ...noticePage } = notices;
+    return c.json({ contests, ...noticePage, notificationsTotal: total });
   } catch (err) {
     const { message, status } = errorStatus(err);
     return c.json({ error: message }, status);
@@ -187,12 +196,26 @@ app.post("/api/notifications/read", async (c) => {
   try {
     const user = await requireUser(c);
     let id: string | undefined;
-    try {
-      const body = await c.req.json<{ id?: string }>();
-      id = typeof body.id === "string" ? body.id : undefined;
-    } catch {
-      // empty body: mark everything read
+    const raw = await c.req.text();
+    if (raw.trim()) {
+      let body: unknown;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        throw new HttpError(400, "Invalid JSON body");
+      }
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        throw new HttpError(400, "Body must be an object");
+      }
+      const value = (body as Record<string, unknown>).id;
+      if (value !== undefined) {
+        if (typeof value !== "string" || !value.trim()) {
+          throw new HttpError(400, "id must be a non-empty string");
+        }
+        id = value;
+      }
     }
+    // An empty body or {} keeps the convenience of marking everything read.
     const unread = await markNotificationsRead(user.id, id);
     return c.json({ ok: true, unread });
   } catch (err) {

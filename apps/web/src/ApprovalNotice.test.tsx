@@ -7,6 +7,8 @@ describe("ApprovalNotice", () => {
     const html = renderToStaticMarkup(<ApprovalNotice sandboxed />);
     expect(html).toContain("bubblewrap 沙箱");
     expect(html).not.toContain("未开启沙箱");
+    // Cgroup limits are optional, so the notice must not promise them.
+    expect(html).not.toContain("限制内存");
   });
 
   test("warns that approval is a trust decision when the sandbox is off", () => {

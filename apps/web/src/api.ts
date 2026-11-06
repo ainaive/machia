@@ -371,10 +371,19 @@ export interface MyPage {
   contests: MyContest[];
   notifications: AppNotification[];
   unread: number;
+  notificationsTotal: number;
 }
 
-export function fetchMyPage() {
-  return api<MyPage>("/api/me");
+export function fetchMyPage(options: { notificationsLimit?: number; notificationsOffset?: number } = {}) {
+  const params = new URLSearchParams();
+  if (options.notificationsLimit !== undefined) {
+    params.set("notificationsLimit", String(options.notificationsLimit));
+  }
+  if (options.notificationsOffset !== undefined) {
+    params.set("notificationsOffset", String(options.notificationsOffset));
+  }
+  const q = params.toString();
+  return api<MyPage>(`/api/me${q ? `?${q}` : ""}`);
 }
 
 /** Marks one notice, or all of them, as read; resolves to the remaining unread count. */
