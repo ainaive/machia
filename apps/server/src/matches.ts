@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { BotManifest } from "@machia/protocol";
 import {
@@ -114,12 +114,21 @@ export async function runPlayersMatch(
     seed: options?.seed,
     runner: botRunner,
   });
-  await mkdir(replaysDir(), { recursive: true });
-  await writeFile(
-    path.join(replaysDir(), `${id}.json`),
-    JSON.stringify(replay),
-    "utf8",
-  );
+  const dir = replaysDir();
+  await mkdir(dir, { recursive: true });
+  // Publish the replay with a rename: the library must never read a
+  // half-written file (a partial file that fails to parse is cached as absent
+  // until the directory changes again). The temporary name does not end in
+  // `.json`, so the listers ignore it.
+  const file = path.join(dir, `${id}.json`);
+  const partial = path.join(dir, `.${id}.json.partial`);
+  try {
+    await writeFile(partial, JSON.stringify(replay), "utf8");
+    await rename(partial, file);
+  } catch (err) {
+    await rm(partial, { force: true }).catch(() => undefined);
+    throw err;
+  }
   return replay;
 }
 
@@ -181,38 +190,109 @@ export async function startDemoMatch(gameId = "arena"): Promise<MatchReplay> {
 // Replay ids come from URLs; only plain ids may reach the filesystem.
 const REPLAY_ID_RE = /^[A-Za-z0-9_-]+$/;
 
-export async function readReplay(id: string): Promise<MatchReplay | null> {
+async function readReplayAt(dir: string, id: string): Promise<MatchReplay | null> {
   if (!REPLAY_ID_RE.test(id)) return null;
   try {
-    const raw = await readFile(path.join(replaysDir(), `${id}.json`), "utf8");
+    const raw = await readFile(path.join(dir, `${id}.json`), "utf8");
     return JSON.parse(raw) as MatchReplay;
   } catch {
     return null;
   }
 }
 
-export async function listReplays(): Promise<
-  Array<{
-    id: string;
-    gameId: string;
-    createdAt: string;
-    players: MatchReplay["players"];
-  }>
-> {
-  await mkdir(replaysDir(), { recursive: true });
-  const files = await readdir(replaysDir());
-  const out = [];
+export async function readReplay(id: string): Promise<MatchReplay | null> {
+  return readReplayAt(replaysDir(), id);
+}
+
+/** The fields the replay library needs, without the (large) tick snapshots. */
+export interface ReplaySummary {
+  id: string;
+  gameId: string;
+  createdAt: string;
+  totalTicks: number;
+  players: MatchReplay["players"];
+  results: MatchReplay["results"];
+}
+
+export interface ReplayPage {
+  matches: ReplaySummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ReplayQuery {
+  gameId?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * The replay library is opened repeatedly while browsing. Parsing every
+ * (large, tick-bearing) replay JSON on every page request is wasteful, so
+ * keep the extracted summaries keyed by the directory's mtime and file count.
+ * Replays are immutable after they are written; a new match changes both.
+ */
+interface ReplayIndex {
+  dir: string;
+  mtimeMs: number;
+  count: number;
+  summaries: ReplaySummary[];
+}
+
+let replayIndex: ReplayIndex | null = null;
+
+async function summariesIn(dir: string, files: string[]): Promise<ReplaySummary[]> {
+  await mkdir(dir, { recursive: true });
+  const info = await stat(dir);
+  if (
+    replayIndex?.dir === dir &&
+    replayIndex.mtimeMs === info.mtimeMs &&
+    replayIndex.count === files.length
+  ) {
+    return replayIndex.summaries;
+  }
+  const summaries: ReplaySummary[] = [];
   for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    const replay = await readReplay(file.replace(/\.json$/, ""));
+    // Link by the file name that actually exists: a replay whose internal id
+    // disagrees with its file name must not produce a dead link.
+    const id = file.slice(0, -".json".length);
+    const replay = await readReplayAt(dir, id);
     if (!replay) continue;
-    out.push({
-      id: replay.id,
+    // An old or hand-made file without a timestamp would crash the sort.
+    if (typeof replay.createdAt !== "string" || replay.createdAt.length === 0) continue;
+    summaries.push({
+      id,
       gameId: replay.gameId ?? "arena",
       createdAt: replay.createdAt,
+      totalTicks: replay.totalTicks,
       players: replay.players,
+      results: replay.results,
     });
   }
-  out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return out;
+  summaries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  replayIndex = { dir, mtimeMs: info.mtimeMs, count: files.length, summaries };
+  return summaries;
+}
+
+/** Reads and filters every replay in `dir`; exported so tests can use a temp dir. */
+export async function listReplaysIn(dir: string, query: ReplayQuery = {}): Promise<ReplayPage> {
+  const limit = query.limit ?? 20;
+  const offset = query.offset ?? 0;
+  await mkdir(dir, { recursive: true });
+  const files = (await readdir(dir)).filter((file) => file.endsWith(".json"));
+  const summaries = await summariesIn(dir, files);
+  const out = query.gameId
+    ? summaries.filter((summary) => summary.gameId === query.gameId)
+    : summaries;
+  return {
+    matches: out.slice(offset, offset + limit),
+    total: out.length,
+    limit,
+    offset,
+  };
+}
+
+export async function listReplays(query: ReplayQuery = {}): Promise<ReplayPage> {
+  return listReplaysIn(replaysDir(), query);
 }

@@ -42,6 +42,8 @@ bun run dev
 | `MACHIA_BACKUP_DIR` / `_KEEP` / `MACHIA_REPLAY_DAYS` | `data/backups` / `14` / `30` | 每日维护：数据库与上传备份、保留份数、练习回放保留天数（见 deploy.md） |
 | `MACHIA_REPLAYS_DIR` | `data/replays` | 对局回放目录（`bun test` 会自动指向临时目录） |
 | `MACHIA_CONTEST_MAX_TICKS` | 各游戏默认 | 赛事对局最大回合数 |
+| `MACHIA_PRACTICE_RATE_LIMIT` | `20` | 每个客户端每分钟最多发起的练习对局数；`0` 关闭 |
+| `MACHIA_TRUST_PROXY` | `off` | 设为 `1` 时信任 `X-Real-IP` / `X-Forwarded-For`（仅当 API 只在受信反向代理后可达时开启） |
 | `MACHIA_AUTH_RATE_LIMIT` | 开启 | 设为 `0` 关闭登录/注册限流（仅测试用） |
 | `MACHIA_SMTP_HOST` / `_PORT` / `_USER` / `_PASS` / `_FROM` | — / `587` | 重置密码邮件；未配置时链接写入日志 |
 
@@ -63,11 +65,13 @@ bun run dev
 | `/admin/invites` | 管理员生成、作废邀请码 |
 | `/contests` | 赛事列表（管理员可创建） |
 | `/contests/:id` | 报名、提交 Bot、审批、积分榜 |
+| `/me` | 我的赛事、审批状态与通知 |
 | `/ladder/:gameId` | 各游戏的 Elo 天梯（已结束的正式比赛，按用户计） |
 | `/games/:gameId` | 练习场大厅（样例 Bot，免登录） |
+| `/matches` | 回放库（按游戏筛选、分页） |
 | `/matches/:matchId` | 对局回放（可刷新） |
 
-在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：邀请码注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1（每对交换座位各打一局，两局同一随机种子），再看积分榜与回放。比赛结束后计入该游戏的 **天梯**：初始 1500 分、K = 32，每场比赛作为一个结算周期（按赛前积分算每局期望，整场变化一起生效，与局的先后无关；大型比赛每局的 K 按比例缩小，一场比赛最多按 16 局计）；只算已结束比赛中成功完成的对局，练习场不计。
+在练习场大厅里 **一键 Demo** 或勾选 Bot 开局。正式比赛：邀请码注册 → 报名并上传 `manifest.json` + `bot.js` → 管理员审批 → 开赛后自动打完所有 1v1（每对交换座位各打一局，两局同一随机种子），再看积分榜与回放。报名后可在 `/me` 查看审批、开赛与结束通知；开赛前可退出尚未批准的报名，管理员也可撤回已批准的 Bot，让选手重新提交并重新审批。比赛结束后计入该游戏的 **天梯**：初始 1500 分、K = 32，每场比赛作为一个结算周期（按赛前积分算每局期望，整场变化一起生效，与局的先后无关；大型比赛每局的 K 按比例缩小，一场比赛最多按 16 局计）；只算已结束比赛中成功完成的对局，练习场不计。
 
 生产静态托管需配置 History API fallback（把未知路径回落到 `index.html`）。VPS 部署（nginx `:3000` TLS + loopback API）见 [docs/deploy.md](docs/deploy.md)。
 
@@ -96,7 +100,7 @@ docs/                 协议说明
 ```bash
 bun test              # 引擎 / Runner / API
 bun run typecheck
-bun run check         # typecheck + test + web build（与 CI 一致）
+bun run check         # typecheck + lint + test + web build（与 CI 一致）
 ```
 
 CI：`.github/workflows/ci.yml`（PR 与 `main`）。给 agent / 贡献者的约定见 [AGENTS.md](AGENTS.md)。

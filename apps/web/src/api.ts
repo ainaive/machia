@@ -68,6 +68,17 @@ export interface GameInfo {
   maxPlayers: number;
 }
 
+export interface HealthInfo {
+  ok: boolean;
+  running: boolean;
+  /** Whether the server runs bots inside bubblewrap. */
+  sandbox: "bwrap" | "off";
+}
+
+export function fetchHealth() {
+  return api<HealthInfo>("/api/health");
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (
@@ -121,6 +132,32 @@ export function startDemo(gameId: string) {
     "/api/matches/demo",
     { method: "POST", body: JSON.stringify({ gameId }) },
   );
+}
+
+/** A replay without its (large) tick snapshots, for the replay library. */
+export interface ReplaySummary {
+  id: string;
+  gameId: string;
+  createdAt: string;
+  totalTicks: number;
+  players: MatchReplay["players"];
+  results: PlayerResult[];
+}
+
+export interface ReplayPage {
+  matches: ReplaySummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function fetchMatches(options: { gameId?: string; limit?: number; offset?: number } = {}) {
+  const params = new URLSearchParams();
+  if (options.gameId) params.set("game", options.gameId);
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.offset !== undefined) params.set("offset", String(options.offset));
+  const q = params.toString();
+  return api<ReplayPage>(`/api/matches${q ? `?${q}` : ""}`);
 }
 
 export function fetchReplay(id: string) {
@@ -277,6 +314,84 @@ export function startContest(id: string) {
 
 export function rerunFailedMatches(id: string) {
   return api<ContestDetail>(`/api/contests/${id}/rerun-failed`, { method: "POST" });
+}
+
+/** Leaves an open contest before the bot is approved. */
+export function withdrawEntry(contestId: string, entryId: string) {
+  return api<{ ok: boolean }>(
+    `/api/contests/${contestId}/entries/${entryId}/withdraw`,
+    { method: "POST" },
+  );
+}
+
+/** Admin: sends an approved bot back for another review before the start. */
+export function unapproveEntry(contestId: string, entryId: string) {
+  return api<{ entry: ContestEntry }>(
+    `/api/contests/${contestId}/entries/${entryId}/unapprove`,
+    { method: "POST" },
+  );
+}
+
+/** Admin: deletes an open contest (a mistake) and its entries. */
+export function deleteContest(id: string) {
+  return api<{ ok: boolean }>(`/api/contests/${id}`, { method: "DELETE" });
+}
+
+export type NotificationKind =
+  | "entry_approved"
+  | "entry_rejected"
+  | "entry_unapproved"
+  | "contest_started"
+  | "contest_finished";
+
+export interface AppNotification {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string | null;
+  contestId: string | null;
+  entryId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface MyContest {
+  contest: ContestSummary;
+  entry: {
+    id: string;
+    status: ContestEntry["status"];
+    botName: string | null;
+    rejectReason: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+export interface MyPage {
+  contests: MyContest[];
+  notifications: AppNotification[];
+  unread: number;
+  notificationsTotal: number;
+}
+
+export function fetchMyPage(options: { notificationsLimit?: number; notificationsOffset?: number } = {}) {
+  const params = new URLSearchParams();
+  if (options.notificationsLimit !== undefined) {
+    params.set("notificationsLimit", String(options.notificationsLimit));
+  }
+  if (options.notificationsOffset !== undefined) {
+    params.set("notificationsOffset", String(options.notificationsOffset));
+  }
+  const q = params.toString();
+  return api<MyPage>(`/api/me${q ? `?${q}` : ""}`);
+}
+
+/** Marks one notice, or all of them, as read; resolves to the remaining unread count. */
+export function markNotificationsRead(id?: string) {
+  return api<{ ok: boolean; unread: number }>("/api/notifications/read", {
+    method: "POST",
+    body: JSON.stringify(id ? { id } : {}),
+  });
 }
 
 /** A player's standing on a game's Elo ladder, from finished contests. */

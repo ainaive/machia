@@ -7,7 +7,7 @@
  * bots/. Bot stderr is shown as the match runs; the replay is saved where the
  * local web app (`bun run dev`) can play it back.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { BotManifest } from "@machia/protocol";
 import { runMatch, type MatchPlayerSpec, type MatchReplay } from "./index";
@@ -134,7 +134,19 @@ export async function main(
     const dir = replaysDir();
     mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${replay.id}.json`);
-    writeFileSync(file, JSON.stringify(replay));
+    // The dev server may list this directory too; publish atomically.
+    const partial = path.join(dir, `.${replay.id}.json.partial`);
+    try {
+      writeFileSync(partial, JSON.stringify(replay));
+      renameSync(partial, file);
+    } catch (err) {
+      try {
+        rmSync(partial, { force: true });
+      } catch {
+        // keep the original write error
+      }
+      throw err;
+    }
     print(`replay ${replay.id} → ${path.relative(process.cwd(), file)}`);
     print(`  watch it at http://localhost:5173/matches/${replay.id} while \`bun run dev\` is running`);
   }

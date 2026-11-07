@@ -159,7 +159,7 @@ Backups stay on the same disk: they protect against mistakes and corruption, not
 
 ## Notes
 
-- Bind the API to loopback (`HOST=127.0.0.1`) so only nginx is public on `:3000`.
+- Bind the API to loopback (`HOST=127.0.0.1`) so only nginx is public on `:3000`. The unit sets `MACHIA_TRUST_PROXY=1` so practice limits use nginx's `X-Real-IP`; leave it off if the API is ever exposed directly (otherwise a caller can rotate the header).
 - Without the sandbox (`MACHIA_SANDBOX` unset or `off`), bots share the `machia` user with the API and can read `data/` (DB, other uploads) and use the network — only approve bots you trust in that mode.
 - SPA routes need History API fallback (`try_files $uri /index.html`). `/assets/` is excluded from it and cached for a year (file names change with content); `index.html` is always revalidated, so a deploy reaches visitors on their next page load. A tab opened before a deploy reloads itself the first time it needs a page the new build replaced.
 - nginx gzip for `application/json` keeps match replays small (hundreds of KB uncompressed).

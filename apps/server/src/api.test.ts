@@ -6,9 +6,10 @@ describe("API", () => {
   test("GET /api/health", async () => {
     const res = await app.request("/api/health");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; running: boolean };
+    const body = (await res.json()) as { ok: boolean; running: boolean; sandbox: string };
     expect(body.ok).toBe(true);
     expect(typeof body.running).toBe("boolean");
+    expect(body.sandbox).toBe("off");
   });
 
   test("GET /api/games includes all registered games", async () => {
@@ -42,6 +43,28 @@ describe("API", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { bots: Array<{ id: string }> };
     expect(body.bots.every((b) => !b.id.startsWith("bomber-"))).toBe(true);
+  });
+
+  test("GET /api/matches returns a paged replay list", async () => {
+    const res = await app.request("/api/matches?limit=10&offset=0");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      matches: unknown[];
+      total: number;
+      limit: number;
+      offset: number;
+    };
+    expect(Array.isArray(body.matches)).toBe(true);
+    expect(body.total).toBeGreaterThanOrEqual(body.matches.length);
+    expect(body.limit).toBe(10);
+    expect(body.offset).toBe(0);
+  });
+
+  test("GET /api/matches rejects unknown games and bad paging", async () => {
+    expect((await app.request("/api/matches?game=chess")).status).toBe(400);
+    expect((await app.request("/api/matches?limit=0")).status).toBe(400);
+    expect((await app.request("/api/matches?limit=101")).status).toBe(400);
+    expect((await app.request("/api/matches?offset=-1")).status).toBe(400);
   });
 
   test("POST /api/matches rejects empty bot list", async () => {
@@ -91,6 +114,35 @@ describe("API", () => {
       body: JSON.stringify({ gameId: "chess" }),
     });
     expect(res.status).toBe(400);
+  });
+
+  test("practice endpoints rate-limit one client", async () => {
+    const previous = process.env.MACHIA_TRUST_PROXY;
+    process.env.MACHIA_TRUST_PROXY = "1";
+    try {
+      const headers = {
+        "Content-Type": "application/json",
+        "x-real-ip": "198.51.100.42",
+      };
+      for (let i = 0; i < 20; i++) {
+        const res = await app.request("/api/matches", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ gameId: "bomber", botIds: [] }),
+        });
+        expect(res.status).toBe(400);
+      }
+      const blocked = await app.request("/api/matches/demo", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ gameId: "bomber" }),
+      });
+      expect(blocked.status).toBe(429);
+      expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+    } finally {
+      if (previous === undefined) delete process.env.MACHIA_TRUST_PROXY;
+      else process.env.MACHIA_TRUST_PROXY = previous;
+    }
   });
 
   test("serverListenConfig defaults to port 3001 on all interfaces", () => {

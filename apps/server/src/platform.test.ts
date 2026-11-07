@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { packBot } from "@machia/runner";
@@ -7,6 +7,7 @@ import { app } from "./index";
 import * as botFiles from "./botFiles";
 import { parseBotFiles } from "./botFiles";
 import { closeDatabase, getDb, resetDatabase } from "./db";
+import { notify } from "./notifications";
 import {
   getEntryFiles,
   reviewEntry,
@@ -451,6 +452,40 @@ describe("auth and contests", () => {
     expect(invite.status).toBe(403);
   });
 
+  test("guest cannot read their own page", async () => {
+    expect((await json("/api/me")).status).toBe(401);
+    expect((await json("/api/notifications/read", { method: "POST" })).status).toBe(401);
+  });
+
+  test("notification inbox pages older notices and keeps the unread count", async () => {
+    const bob = await register("bob");
+    const userId = (bob.body.user as { id: string }).id;
+    const db = await getDb();
+    for (let i = 0; i < 5; i++) {
+      notify(db, {
+        userId,
+        kind: "entry_approved",
+        title: `通知 ${i}`,
+        dedupeKey: `test:${i}`,
+      });
+    }
+
+    const first = await json("/api/me?notificationsLimit=2", { cookie: bob.cookie });
+    expect(first.status).toBe(200);
+    expect(first.body.notificationsTotal).toBe(5);
+    expect(first.body.unread).toBe(5);
+    const firstIds = (first.body.notifications as Array<{ id: string }>).map((n) => n.id);
+    expect(firstIds).toHaveLength(2);
+
+    const second = await json("/api/me?notificationsLimit=2&notificationsOffset=2", {
+      cookie: bob.cookie,
+    });
+    const secondIds = (second.body.notifications as Array<{ id: string }>).map((n) => n.id);
+    expect(secondIds).toHaveLength(2);
+    expect(new Set([...firstIds, ...secondIds]).size).toBe(4);
+    expect((await json("/api/me?notificationsLimit=0", { cookie: bob.cookie })).status).toBe(400);
+  });
+
   test("guest cannot enter", async () => {
     const admin = await adminSession();
     const created = await json("/api/contests", {
@@ -565,6 +600,187 @@ describe("auth and contests", () => {
     }
   }, 25_000);
 
+  test("players get notices for approval, unapproval and the contest result", async () => {
+    const admin = await adminSession();
+    const bob = await register("bob");
+
+    const empty = await json("/api/me", { cookie: bob.cookie });
+    expect(empty.status).toBe(200);
+    expect(empty.body.contests).toEqual([]);
+    expect(empty.body.notifications).toEqual([]);
+
+    const created = await json("/api/contests", {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ title: "Notices Cup", gameId: "arena" }),
+    });
+    const contestId = (created.body.contest as { id: string }).id;
+    const up = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: arenaFiles("BobBot") }),
+    });
+    const entryId = (up.body.entry as { id: string }).id;
+    await approveEntry(contestId, entryId, admin.cookie);
+
+    let me = await json("/api/me", { cookie: bob.cookie });
+    expect((me.body.contests as Array<{ entry: { status: string } }>)[0]!.entry.status).toBe(
+      "approved",
+    );
+    expect((me.body.notifications as Array<{ kind: string }>).map((n) => n.kind)).toContain(
+      "entry_approved",
+    );
+    expect(me.body.unread).toBe(1);
+
+    // Only an admin can send an approved bot back for review.
+    expect(
+      (
+        await json(`/api/contests/${contestId}/entries/${entryId}/unapprove`, {
+          method: "POST",
+          cookie: bob.cookie,
+        })
+      ).status,
+    ).toBe(403);
+    const unapproved = await json(
+      `/api/contests/${contestId}/entries/${entryId}/unapprove`,
+      { method: "POST", cookie: admin.cookie },
+    );
+    expect(unapproved.status).toBe(200);
+    expect((unapproved.body.entry as { status: string }).status).toBe("pending");
+
+    me = await json("/api/me", { cookie: bob.cookie });
+    expect((me.body.contests as Array<{ entry: { status: string } }>)[0]!.entry.status).toBe(
+      "pending",
+    );
+    expect((me.body.notifications as Array<{ kind: string }>).map((n) => n.kind)).toContain(
+      "entry_unapproved",
+    );
+
+    // The owner can fix the bot and send it back for review.
+    const again = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: arenaFiles("BobBot2") }),
+    });
+    expect((again.body.entry as { status: string }).status).toBe("pending");
+    await approveEntry(contestId, entryId, admin.cookie);
+
+    const adminBot = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ files: arenaFiles("AdminBot") }),
+    });
+    await approveEntry(
+      contestId,
+      (adminBot.body.entry as { id: string }).id,
+      admin.cookie,
+    );
+    expect(
+      (
+        await json(`/api/contests/${contestId}/start`, {
+          method: "POST",
+          cookie: admin.cookie,
+        })
+      ).status,
+    ).toBe(200);
+    await waitForContest(contestId, bob.cookie);
+
+    me = await json("/api/me", { cookie: bob.cookie });
+    const kinds = (me.body.notifications as Array<{ kind: string }>).map((n) => n.kind);
+    expect(kinds).toContain("contest_started");
+    expect(kinds).toContain("contest_finished");
+    expect(me.body.unread).toBeGreaterThan(0);
+    expect(me.body.notificationsTotal).toBeGreaterThanOrEqual(kinds.length);
+
+    // A malformed body or a non-string id must not silently mark everything read.
+    expect(
+      (
+        await json("/api/notifications/read", {
+          method: "POST",
+          cookie: bob.cookie,
+          body: "{",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await json("/api/notifications/read", {
+          method: "POST",
+          cookie: bob.cookie,
+          body: JSON.stringify({ id: 42 }),
+        })
+      ).status,
+    ).toBe(400);
+    expect((await json("/api/me", { cookie: bob.cookie })).body.unread).toBeGreaterThan(0);
+
+    const read = await json("/api/notifications/read", {
+      method: "POST",
+      cookie: bob.cookie,
+      body: "{}",
+    });
+    expect(read.status).toBe(200);
+    expect(read.body.unread).toBe(0);
+    expect((await json("/api/me", { cookie: bob.cookie })).body.unread).toBe(0);
+  }, 30_000);
+
+  test("a player can withdraw a pending bot but not an approved one", async () => {
+    const admin = await adminSession();
+    const bob = await register("bob");
+    const created = await json("/api/contests", {
+      method: "POST",
+      cookie: admin.cookie,
+      body: JSON.stringify({ title: "Withdraw Cup", gameId: "arena" }),
+    });
+    const contestId = (created.body.contest as { id: string }).id;
+
+    const up = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: arenaFiles("BobBot") }),
+    });
+    const entryId = (up.body.entry as { id: string }).id;
+    const bobId = (bob.body.user as { id: string }).id;
+    const uploadDir = path.join(process.env.MACHIA_UPLOADS_DIR!, bobId, entryId);
+    expect(existsSync(uploadDir)).toBe(true);
+    const withdrawn = await json(
+      `/api/contests/${contestId}/entries/${entryId}/withdraw`,
+      { method: "POST", cookie: bob.cookie },
+    );
+    expect(withdrawn.status).toBe(200);
+    expect(existsSync(uploadDir)).toBe(false);
+    expect((await json("/api/me", { cookie: bob.cookie })).body.contests).toEqual([]);
+
+    // Rejoin, approve, then try to withdraw the pinned version.
+    const again = await json(`/api/contests/${contestId}/bot`, {
+      method: "POST",
+      cookie: bob.cookie,
+      body: JSON.stringify({ files: arenaFiles("BobBot") }),
+    });
+    const againId = (again.body.entry as { id: string }).id;
+    await approveEntry(contestId, againId, admin.cookie);
+    const againDir = path.join(process.env.MACHIA_UPLOADS_DIR!, bobId, againId);
+    expect(existsSync(againDir)).toBe(true);
+    expect(
+      (
+        await json(`/api/contests/${contestId}/entries/${againId}/withdraw`, {
+          method: "POST",
+          cookie: bob.cookie,
+        })
+      ).status,
+    ).toBe(409);
+
+    // A mistaken open contest can be removed; players lose the entry with it.
+    expect(
+      (await json(`/api/contests/${contestId}`, { method: "DELETE", cookie: bob.cookie })).status,
+    ).toBe(403);
+    expect(
+      (await json(`/api/contests/${contestId}`, { method: "DELETE", cookie: admin.cookie })).status,
+    ).toBe(200);
+    expect((await json(`/api/contests/${contestId}`, { cookie: admin.cookie })).status).toBe(404);
+    expect(existsSync(againDir)).toBe(false);
+    expect((await json("/api/me", { cookie: bob.cookie })).body.contests).toEqual([]);
+  });
+
   test("admin reads a bot's code and approves exactly that version", async () => {
     const admin = await adminSession();
     const bob = await register("bob");
@@ -615,6 +831,14 @@ describe("auth and contests", () => {
     const approved = await approveEntry(contestId, entryId, admin.cookie);
     expect(approved.status).toBe(200);
     expect((approved.body.entry as { status: string }).status).toBe("approved");
+
+    // Re-approving the same reviewed bytes is a retry, not a second notice.
+    const noticesBefore = (await json("/api/me", { cookie: bob.cookie })).body
+      .notifications as unknown[];
+    expect((await approveEntry(contestId, entryId, admin.cookie)).status).toBe(200);
+    const noticesAfter = (await json("/api/me", { cookie: bob.cookie })).body
+      .notifications as unknown[];
+    expect(noticesAfter).toHaveLength(noticesBefore.length);
   });
 
   test("an upload racing an approval never leaves unreviewed code approved", async () => {
